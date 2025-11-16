@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>😂 즐거운 운명 뽑기 게임</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Inter 폰트 사용 */
+        body { font-family: 'Inter', sans-serif; background-color: #f7f9fb; }
+        /* 일반 버튼 스타일 */
+        .btn-base {
+            transition: all 0.1s ease-in-out;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .btn-base:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+        }
+        .btn-base:active:not(:disabled) {
+            transform: translateY(1px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .btn-base:disabled {
+            background-color: #d1d5db !important;
+            color: #6b7280 !important;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        /* Primary (Draw/Raffle) Button Style - 용어 변경에 맞춰 색상 유지 */
+        .btn-primary {
+            background: linear-gradient(145deg, #4f46e5, #4338ca);
+            color: white;
+            font-weight: bold;
+        }
+        /* Secondary (Tee-Off Order) Button Style */
+        .btn-secondary {
+            background-color: #10b981; /* Green color */
+            color: white;
+            font-weight: bold;
+        }
+        /* Danger (End Game) Button Style */
+        .btn-danger {
+            background-color: #ef4444; /* Red color */
+            color: white;
+            font-weight: bold;
+        }
+        .team-box {
+            background-color: #ffffff;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 800;
+            min-height: 5rem; /* 애니메이션 중 높이 유지를 위해 최소 높이 설정 */
+            display: flex;
+            flex-direction: column; /* 제목과 프로 목록을 세로로 정렬 */
+            align-items: center;
+            justify-content: center;
+        }
+        /* Team Selection base style */
+        .team-selector {
+            border-width: 2px;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            transition: all 0.2s ease-in-out;
+        }
+        /* Team 1 Selected Style */
+        .team-selected-win {
+            border-color: #ef4444 !important; /* Red border for T1 win */
+            background-color: #fee2e2 !important; /* Light red background */
+            box-shadow: 0 10px 15px -3px rgba(239, 68, 68, 0.3), 0 4px 6px -2px rgba(239, 68, 68, 0.1) !important;
+            transform: scale(1.02);
+        }
+        /* Team 2 Selected Style */
+        .team-selected-loss {
+            border-color: #3b82f6 !important; /* Blue border for T2 win */
+            background-color: #dbeafe !important; /* Light blue background */
+            box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3), 0 4px 6px -2px rgba(59, 130, 246, 0.1) !important;
+            transform: scale(1.02);
+        }
+
+        /* --- 홀 버튼 스타일 --- */
+        .hole-btn {
+            padding: 0.5rem 0.2rem;
+            width: 15%; 
+            min-width: 40px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            border-radius: 0.5rem;
+            transition: all 0.1s;
+            border: 1px solid #d1d5db; /* 기본 테두리 */
+        }
+        
+        /* 🔥 현재 보여주는 홀 (Active) - 인디고 계열로 시각적 강조 극대화 */
+        .hole-active {
+            background-color: #eef2ff !important; /* Light indigo background */
+            border-color: #6366f1 !important; /* Strong indigo border */
+            outline: 4px solid #4f46e5 !important; /* Primary indigo color for strong outline */
+            outline-offset: 2px;
+            box-shadow: 0 0 16px rgba(79, 70, 229, 0.9) !important; /* Strong blue/indigo glow */
+            transform: scale(1.08); /* Stronger zoom */
+            color: #3730a3 !important; /* Darker text for contrast */
+            font-weight: 800 !important;
+        }
+
+        /* 팀 1 승리 (레드) */
+        .score-win { background-color: #f87171; color: #7f1d1d; font-weight: bold; }
+        /* 팀 2 승리 (블루) */
+        .score-loss { background-color: #93c5fd; color: #1e40af; font-weight: bold; }
+        /* 동점 (TIE) */
+        .score-tie { background-color: #5eead4; color: #0f766e; font-weight: bold; }
+
+        /* --- 결과 영역 Pulse 애니메이션 추가 --- */
+        @keyframes pulse-draw {
+            0% { transform: scale(1); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
+            50% { transform: scale(1.01); box-shadow: 0 0 25px rgba(79, 70, 229, 0.7); }
+            100% { transform: scale(1); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
+        }
+
+        .result-pulse {
+            animation: pulse-draw 0.5s ease-out 1;
+        }
+
+        /* --- 팀 뽑기 애니메이션 스타일 (속도 조정됨) --- */
+        @keyframes shuffle-name {
+            0% { opacity: 0.3; transform: translateY(10px) scale(0.9); }
+            50% { opacity: 1; transform: translateY(0px) scale(1); }
+            100% { opacity: 0.3; transform: translateY(-10px) scale(0.9); }
+        }
+        .shuffling-name {
+            display: inline-block;
+            /* 애니메이션 속도를 0.15초로 늘려 보통 속도로 조정 */
+            animation: shuffle-name 0.15s infinite cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* --- 메시지 박스 스타일 (하단 고정) --- */
+        .fixed-message-box {
+            position: fixed;
+            bottom: 0; /* 화면 하단에 고정 */
+            left: 0;
+            width: 100%;
+            padding: 1rem;
+            text-align: center;
+            font-weight: bold;
+            box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(100%);
+            transition: opacity 0.3s, visibility 0.3s, transform 0.3s;
+        }
+        .fixed-message-box.open {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+
+        /* --- 모달 스타일 (변경 없음) --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+        .modal-overlay.open {
+            opacity: 1;
+            visibility: visible;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 1.5rem;
+            border-radius: 1rem;
+            max-width: 90%;
+            max-height: 90%;
+            overflow-y: auto;
+            position: relative;
+            transform: translateY(-50px);
+            transition: transform 0.3s ease-out;
+        }
+        .modal-overlay.open .modal-content {
+            transform: translateY(0);
+        }
+        .result-grid-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        /* 프로 입력 박스 폰트 크기 조정 */
+        .player-input-field::placeholder {
+            font-size: 0.75rem; /* Placeholder 폰트 크기 줄임 */
+            color: #9ca3af; /* 회색으로 조정 */
+        }
+
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+    <div id="app" class="max-w-xl mx-auto bg-white p-6 rounded-2xl shadow-2xl border border-gray-100">
+
+        <!-- Header -->
+        <header class="text-center mb-6">
+            <h1 class="text-3xl font-extrabold text-gray-900 mb-1">😂 즐거운 운명 뽑기 게임</h1>
+        </header>
+
+        <!-- --- 게임 설정 영역 (Initial State) --- -->
+        <div id="setup-area">
+             <!-- Pro Input (4개 입력 박스로 변경됨) -->
+            <div class="mb-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <div class="flex justify-between items-center mb-2">
+                    <label class="block text-sm font-bold text-gray-700">
+                        프로 이름 입력 (총 4명)
+                    </label>
+                    <button onclick="resetPlayerInputs()" 
+                            class="text-xs font-semibold text-gray-500 hover:text-red-500 transition duration-150">
+                        [입력 초기화]
+                    </button>
+                </div>
+                
+                <div id="player-inputs-container" class="grid grid-cols-2 gap-3">
+                    <input type="text" id="player-input-1" placeholder="당신은골프왕" oninput="updatePlayerList()" 
+                           class="player-input-field w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out font-medium text-gray-800 text-center" />
+                    <input type="text" id="player-input-2" placeholder="10년백돌이" oninput="updatePlayerList()" 
+                           class="player-input-field w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out font-medium text-gray-800 text-center" />
+                    <input type="text" id="player-input-3" placeholder="보기플레이어" oninput="updatePlayerList()" 
+                           class="player-input-field w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out font-medium text-gray-800 text-center" />
+                    <input type="text" id="player-input-4" placeholder="나는버디킹" oninput="updatePlayerList()" 
+                           class="player-input-field w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out font-medium text-gray-800 text-center" />
+                </div>
+                
+                <div id="player-list-display" class="mt-3 text-sm font-semibold text-gray-600">
+                    <!-- Updated by JS -->
+                </div>
+            </div>
+
+            <!-- Tee-Off Order Selection (with Shuffle Count) -->
+            <div class="mb-4 p-4 bg-green-50 rounded-xl border border-green-200">
+                <label class="block text-sm font-bold text-gray-700 mb-2">
+                    1. 라운드 타순 결정
+                </label>
+                <div class="mb-3 flex items-center justify-center space-x-2">
+                    <label for="shuffle-count-input" class="text-sm font-medium text-gray-700">타순 섞기 횟수:</label>
+                    <input type="number" id="shuffle-count-input" value="10" min="1" max="50"
+                           class="w-16 p-1 border border-gray-300 rounded-lg text-center font-bold focus:ring-green-500 focus:border-green-500">
+                </div>
+                <div id="tee-off-display" class="text-center text-xl font-extrabold text-green-700 mb-1 flex flex-col items-center justify-center min-h-[8rem]">
+                    타순을 정해주세요!
+                </div>
+                <div id="tee-off-progress" class="text-center text-sm font-medium text-gray-600 mt-2 h-5 hidden"></div>
+                
+                <button id="tee-off-select-button" onclick="selectTeeOffOrder()" disabled
+                        class="w-full btn-base btn-secondary py-3 rounded-xl text-lg shadow-md">
+                    🎲 라운드 타순 운명 뽑기
+                </button>
+            </div>
+
+            <!-- Joker Count Input -->
+            <div class="mb-6 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+                <label for="joker-count-input" class="block text-sm font-bold text-gray-700 mb-2">
+                    2. 조커(JOKER) 활성화 횟수 (0~18홀)
+                </label>
+                <input type="number" id="joker-count-input" value="5" min="0" max="18"
+                       class="w-full p-3 border border-yellow-300 rounded-lg focus:ring-yellow-500 focus:border-yellow-500 transition duration-150 ease-in-out font-bold text-gray-800 text-center">
+            </div>
+
+            <!-- Start Button (onclick 수정됨) -->
+            <button id="start-game-button" onclick="handleStartGameConfirmation()" disabled
+                    class="w-full btn-base btn-primary py-3 rounded-xl text-lg mb-6 shadow-md">
+                3. 뽑기 게임 시작!
+            </button>
+        </div>
+
+        <!-- --- 게임 진행 영역 (In-Game State) --- -->
+        <div id="game-area" class="hidden">
+            <!-- Current Status -->
+            <div class="flex justify-between items-center bg-indigo-50 p-4 rounded-xl mb-6 shadow-inner">
+                <div class="text-left">
+                    <p class="text-lg font-bold text-indigo-700">다음 홀:</p>
+                    <p id="current-hole-display" class="text-4xl font-extrabold text-indigo-900">N/A</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-sm font-semibold text-gray-600">남은 조커:</p>
+                    <p id="joker-remaining" class="text-xl font-bold text-red-700">N/A</p>
+                </div>
+            </div>
+
+            <!-- Hole Buttons (1-18) - 전/후반 구분 -->
+            <div id="hole-buttons-container" class="mb-6 p-4 bg-gray-100 rounded-xl border border-gray-200">
+                <p class="text-sm font-bold text-gray-700 mb-4 text-center">⛳️ 18홀 결과 보기 및 수정 (클릭)</p>
+                
+                <!-- 전반 (Front Nine: 1-9) -->
+                <div class="mb-4 p-3 bg-white rounded-lg shadow-md border border-gray-200">
+                    <h3 class="text-lg font-extrabold text-gray-800 mb-2 text-center border-b pb-2">FRONT 9 (1~9홀)</h3>
+                    <div id="hole-buttons-front" class="flex flex-wrap gap-1.5 justify-center">
+                        <!-- 1-9 Buttons will be generated here -->
+                    </div>
+                </div>
+
+                <!-- 후반 (Back Nine: 10-18) -->
+                 <div class="p-3 bg-white rounded-lg shadow-md border border-gray-200">
+                    <h3 class="text-lg font-extrabold text-gray-800 mb-2 text-center border-b pb-2">BACK 9 (10~18홀)</h3>
+                    <div id="hole-buttons-back" class="flex flex-wrap gap-1.5 justify-center">
+                        <!-- 10-18 Buttons will be generated here -->
+                    </div>
+                </div>
+
+            </div>
+            
+            <!-- Control Buttons (Draw & End Game) -->
+            <div class="flex space-x-4 mb-4">
+                <!-- 드로우 버튼 텍스트 수정 -->
+                <button id="next-draw-button" onclick="handleDraw()" disabled
+                        class="w-3/4 btn-base btn-primary py-3 rounded-xl text-lg shadow-md">
+                    🤝 팀 뽑기 시작!
+                </button>
+                <button id="end-game-button" onclick="showFinalSummary()"
+                        class="w-1/4 btn-base btn-danger py-3 rounded-xl text-lg shadow-md">
+                    결과 요약
+                </button>
+            </div>
+            
+            <!-- NEW: Reset Button in Game Area -->
+            <button id="main-reset-button" onclick="handleResetConfirmation();"
+                    class="w-full btn-base bg-gray-300 text-gray-800 py-3 rounded-xl text-lg shadow-md hover:bg-gray-400 transition mb-6">
+                ↩️ 게임 초기화 및 재시작
+            </button>
+
+
+            <!-- Result Display -->
+            <div id="result-area" class="mt-4 p-4 border border-indigo-300 bg-white rounded-xl shadow-inner hidden">
+                <!-- 결과 제목 수정: '팀 구성' 강조 -->
+                <h2 class="text-xl font-bold text-indigo-800 mb-4 text-center">🏆 운명의 <span id="result-hole-number"></span>홀 팀 구성</h2>
+                <div id="joker-status" class="text-center font-bold text-lg mb-4 p-2 rounded-lg"></div>
+
+                <div class="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4">
+                    <!-- Team 1 Box - Clickable for scoring -->
+                    <div id="team1-players" 
+                         onclick="toggleWinningTeam(1)"
+                         class="team-box team-selector border-red-400 text-red-700 w-full sm:w-1/2 cursor-pointer transition duration-150 ease-in-out hover:shadow-lg">
+                    </div>
+                    <div class="text-3xl font-extrabold text-gray-400">VS</div>
+                    <!-- Team 2 Box - Clickable for scoring -->
+                    <div id="team2-players" 
+                         onclick="toggleWinningTeam(2)"
+                         class="team-box team-selector border-blue-400 text-blue-700 w-full sm:w-1/2 cursor-pointer transition duration-150 ease-in-out hover:shadow-lg">
+                    </div>
+                </div>
+
+                <!-- 드로우 상세 텍스트 수정 -->
+                <p id="draw-details" class="text-sm text-gray-600 mt-4 pt-3 border-t border-gray-200 text-center"></p>
+
+                <!-- Score Input Area (Custom Clickable Boxes) -->
+                <div id="score-input-area" class="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    
+                    <!-- Score status feedback (문구 수정) -->
+                    <p id="score-status" class="mt-2 text-sm text-center font-semibold text-indigo-700">
+                        팀을 클릭하여 승리 팀을 선택하세요 (미선택 시 동점)
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- --- 결과 요약 모달 창 (변경 없음) --- -->
+    <div id="results-modal" class="modal-overlay">
+        <div class="modal-content w-full sm:max-w-xl">
+            <button class="absolute top-3 right-3 text-gray-500 hover:text-gray-900 text-2xl font-bold" onclick="closeModal()">
+                &times;
+            </button>
+            <h2 class="text-2xl font-extrabold text-gray-900 mb-4 border-b pb-2 text-center">라운드 최종 결과 요약</h2>
+            <!-- 최종 결과 요약 테이블을 위한 스타일 조정 -->
+            <div id="final-results-summary" class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+                <!-- Hole results will be inserted here -->
+            </div>
+            <p id="game-summary-message" class="mt-6 p-3 text-center text-md font-semibold rounded-lg bg-yellow-100 text-yellow-800"></p>
+            
+            <!-- 새로 추가된 새 게임 시작 버튼 -->
+            <button onclick="handleResetConfirmation(); closeModal();"
+                    class="mt-4 w-full btn-base btn-primary py-3 rounded-xl text-lg shadow-md">
+                새 게임 시작 (게임 초기화)
+            </button>
+        </div>
+    </div>
+    
+    <!-- --- 게임 시작 확인 모달 창 (새로 추가됨) --- -->
+    <div id="confirm-modal" class="modal-overlay">
+        <div class="modal-content w-full sm:max-w-xs p-6">
+            <h3 id="confirm-title" class="text-xl font-bold text-gray-900 mb-4 text-center">확인</h3>
+            <p id="confirm-message" class="text-gray-700 mb-6 text-center"></p>
+            <div class="flex justify-center space-x-4">
+                <button id="confirm-yes-button" 
+                        class="w-1/2 btn-base btn-primary py-2 rounded-xl text-lg shadow-md">
+                    확인
+                </button>
+                <button onclick="closeConfirmModal()"
+                        class="w-1/2 btn-base bg-gray-300 text-gray-800 py-2 rounded-xl text-lg shadow-md hover:bg-gray-400">
+                    취소
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- --- 하단 고정 메시지 영역 --- -->
+    <div id="global-message-box" class="fixed-message-box bg-white border-t border-gray-300"></div>
+
+    <script>
+        // =======================================================
+        // 1. 핵심 상수 정의 (유지보수 용이성을 위해 분리)
+        // =======================================================
+        const MAX_HOLES = 18;
+        const TEAM_SCORE = {
+            RED_WIN: 'WIN',
+            BLUE_WIN: 'LOSS',
+            TIE: 'TIE'
+        };
+        const TEAM_COLORS = {
+            1: 'RED TEAM',
+            2: 'BLUE TEAM'
+        };
+        const DRAW_STICKS = {
+            RED: 'R',
+            BLUE: 'B',
+            JOKER: 'J'
+        };
+        const PLAYER_INPUT_IDS = ['player-input-1', 'player-input-2', 'player-input-3', 'player-input-4'];
+
+        // --- 게임 상태 변수 ---
+        let currentHole = 0; // 0: 게임 준비, 1~18: 다음에 뽑기할 홀 번호
+        let currentPlayers = [];
+        let teeOffOrder = []; 
+        let jokerSchedule = [];
+        // holeResults의 score 필드는 TEAM_SCORE 상수를 사용
+        let holeResults = []; // 각 홀의 팀 구성 및 스코어 결과를 저장하는 배열 (0~17 인덱스)
+        
+        // --- 유틸리티 함수 ---
+
+        /**
+         * 배열을 무작위로 섞습니다. (Fisher-Yates shuffle)
+         */
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1)); 
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        /**
+         * 경고 메시지를 사용자에게 표시합니다. (alert 대체)
+         */
+        function showMessage(text, type = 'blue') {
+            const messageBox = document.getElementById('global-message-box');
+            messageBox.textContent = text;
+            
+            // 클래스 초기화
+            messageBox.className = 'fixed-message-box';
+            
+            let bgColor, textColor, borderColor;
+            switch (type) {
+                case 'red':
+                    bgColor = 'bg-red-100';
+                    textColor = 'text-red-800';
+                    borderColor = 'border-red-300';
+                    break;
+                case 'green':
+                    bgColor = 'bg-green-100';
+                    textColor = 'text-green-800';
+                    borderColor = 'border-green-300';
+                    break;
+                case 'yellow':
+                    bgColor = 'bg-yellow-100';
+                    textColor = 'text-yellow-800';
+                    borderColor = 'border-yellow-300';
+                    break;
+                case 'indigo':
+                default:
+                    bgColor = 'bg-indigo-100';
+                    textColor = 'text-indigo-800';
+                    borderColor = 'border-indigo-300';
+                    break;
+            }
+
+            messageBox.classList.add('open', bgColor, textColor, borderColor);
+            
+            // 3초 후 사라지도록 설정
+            setTimeout(() => {
+                messageBox.classList.remove('open');
+            }, 3000);
+        }
+        
+        /**
+         * 비동기 딜레이를 위한 Promise 기반 함수
+         */
+        const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+
+        // --- 프로 및 UI 관리 함수 ---
+
+        /**
+         * 4개의 입력 박스에서 프로 이름을 가져와 유효성을 검사합니다.
+         */
+        function getPlayers() {
+            let players = [];
+            
+            PLAYER_INPUT_IDS.forEach(id => {
+                const inputElement = document.getElementById(id);
+                if (inputElement) {
+                    const name = inputElement.value.trim();
+                    if (name) {
+                        players.push(name);
+                    }
+                }
+            });
+            
+            if (players.length !== 4) return null;
+            
+            // 중복 제거 및 확인
+            const uniquePlayers = [...new Set(players)];
+            if (uniquePlayers.length !== 4) return null;
+
+            return uniquePlayers;
+        }
+
+        /**
+         * 프로 입력 박스를 초기화합니다.
+         */
+        function resetPlayerInputs() {
+            PLAYER_INPUT_IDS.forEach(id => {
+                const inputElement = document.getElementById(id);
+                if (inputElement) {
+                    inputElement.value = '';
+                }
+            });
+            updatePlayerList();
+            showMessage("✅ 프로 입력란이 초기화되었습니다.", 'green');
+        }
+
+        /**
+         * 프로 목록 디스플레이를 업데이트하고 currentPlayers를 설정합니다.
+         */
+        function updatePlayerList() {
+            const players = getPlayers();
+            const displayElement = document.getElementById('player-list-display');
+            
+            const selectButton = document.getElementById('tee-off-select-button');
+            const display = document.getElementById('tee-off-display');
+            const startButton = document.getElementById('start-game-button');
+
+            if (players) {
+                currentPlayers = players;
+                displayElement.innerHTML = `현재 프로: <span class="text-indigo-600 font-extrabold">${players.join(', ')}</span> (4명 확인 완료)`;
+                
+                // 타순이 결정되지 않았거나, 결정된 타순이 현재 프로와 일치하지 않으면 초기화
+                if (teeOffOrder.length !== 4 || !teeOffOrder.every(p => players.includes(p))) {
+                    teeOffOrder = [];
+                    display.innerHTML = '타순을 정해주세요!';
+                    selectButton.textContent = '🎲 라운드 타순 운명 뽑기';
+                    startButton.disabled = true;
+                }
+
+                selectButton.disabled = false; // 4명 입력되면 타순 결정 활성화
+            } else {
+                 currentPlayers = [];
+                 displayElement.innerHTML = `현재 프로: <span class="text-red-600">4명의 고유한 프로 이름을 정확히 입력해주세요.</span>`;
+                 
+                 // 프로 미달 시 모든 후속 버튼 비활성화
+                 selectButton.disabled = true;
+                 startButton.disabled = true;
+            }
+        }
+        
+        /**
+         * 타순을 무작위로 정하고 시각적으로 셔플링을 보여줍니다.
+         */
+        async function selectTeeOffOrder() {
+            const players = getPlayers();
+            if (!players || players.length !== 4) {
+                 showMessage("🚨 4명의 프로 이름을 정확히 입력해주세요.", 'red');
+                 return;
+            }
+            
+            // 요청 사항: 타순 뽑기 시작 시 결과 영역으로 자동 스크롤
+            const teeOffDisplay = document.getElementById('tee-off-display');
+            teeOffDisplay.scrollIntoView({ behavior: 'smooth' });
+            
+            const shuffleCountInput = document.getElementById('shuffle-count-input');
+            const shuffleCount = parseInt(shuffleCountInput.value, 10);
+            if (shuffleCount < 1 || shuffleCount > 50) {
+                 showMessage("🚨 섞기 횟수는 1에서 50 사이여야 합니다.", 'red');
+                 return;
+            }
+            
+            const button = document.getElementById('tee-off-select-button');
+            const display = document.getElementById('tee-off-display');
+            const progress = document.getElementById('tee-off-progress');
+            const startButton = document.getElementById('start-game-button');
+
+            // 입력 필드 비활성화 처리
+            PLAYER_INPUT_IDS.forEach(id => document.getElementById(id).disabled = true);
+            document.getElementById('joker-count-input').disabled = true;
+            button.disabled = true;
+            shuffleCountInput.disabled = true;
+            startButton.disabled = true;
+            progress.classList.remove('hidden');
+
+            const playersCopy = [...currentPlayers]; 
+
+            // 애니메이션 속도를 보통으로 유지 (10회 섞기 기준 1.5초)
+            const animationDuration = 1500; 
+            const totalDelay = animationDuration / shuffleCount;
+
+
+            for (let i = 1; i <= shuffleCount; i++) {
+                shuffleArray(playersCopy);
+                
+                const shuffleHtml = playersCopy.map((player, index) => 
+                    `<p class="text-lg font-bold text-gray-700 mb-1">
+                        ${index + 1}. <span class="text-gray-500">${player}</span>
+                    </p>`
+                ).join('');
+
+                display.innerHTML = `<div class="flex flex-col items-center justify-center pt-2 pb-2">
+                    <span class="text-sm text-gray-500 shuffling-text mb-2">... 섞는 중 (${i}/${shuffleCount}) ...</span>
+                    ${shuffleHtml}
+                </div>`;
+                progress.textContent = ``; 
+                
+                let waitTime = totalDelay;
+                if (i === shuffleCount) waitTime = 500;
+                await delay(waitTime);
+            }
+
+            teeOffOrder = playersCopy;
+
+            const finalOrderHtml = teeOffOrder.map((player, index) => 
+                `<p class="text-2xl font-extrabold text-gray-900 mb-1">
+                    ${index + 1}. <span class="text-green-700">${player}</span>
+                </p>`
+            ).join('');
+            
+            display.innerHTML = `<div class="flex flex-col items-center justify-center pt-2 pb-2">${finalOrderHtml}</div>`;
+            progress.classList.add('hidden');
+
+            // 입력 필드 활성화 처리
+            PLAYER_INPUT_IDS.forEach(id => document.getElementById(id).disabled = false);
+            document.getElementById('joker-count-input').disabled = false;
+            button.disabled = false;
+            shuffleCountInput.disabled = false;
+            startButton.disabled = false; // 타순 결정 후 게임 시작 버튼 활성화
+            
+            // 버튼 텍스트 수정
+            button.textContent = '🎲 타순 운명 재뽑기';
+            showMessage(`✅ 타순이 결정되었습니다.`, 'green');
+        }
+
+
+        // --- 모달 및 확인 관리 함수 (추가/수정됨) ---
+
+        // 결과 모달
+        function openModal() {
+            document.getElementById('results-modal').classList.add('open');
+        }
+
+        function closeModal() {
+            document.getElementById('results-modal').classList.remove('open');
+        }
+
+        // 확인 모달
+        /**
+         * 커스텀 확인 모달을 열고 '확인' 버튼에 콜백 함수를 연결합니다.
+         */
+        function openConfirmModal(title, message, callback) {
+            document.getElementById('confirm-title').textContent = title;
+            document.getElementById('confirm-message').textContent = message;
+            
+            const yesButton = document.getElementById('confirm-yes-button');
+            
+            // 기존 이벤트 리스너를 안전하게 제거하고 새로 추가
+            yesButton.onclick = null; 
+            yesButton.onclick = () => {
+                closeConfirmModal();
+                callback();
+            };
+
+            document.getElementById('confirm-modal').classList.add('open');
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirm-modal').classList.remove('open');
+        }
+        
+        /**
+         * 게임 시작 버튼 클릭 시 확인 모달을 표시합니다.
+         * (사용자의 요청에 따라 추가된 함수)
+         */
+        function handleStartGameConfirmation() {
+            if (teeOffOrder.length !== 4) {
+                 showMessage("🚨 먼저 '타순 결정'을 통해 타순을 지정해주세요.", 'red');
+                 return;
+            }
+
+            const jokerCount = parseInt(document.getElementById('joker-count-input').value, 10);
+            
+            openConfirmModal(
+                "게임 시작을 확인하시겠어요?", 
+                `4명의 프로와 조커 ${jokerCount}회로 게임을 시작합니다.`, 
+                confirmGameStart
+            );
+        }
+        
+        /**
+         * 게임 초기화 버튼 클릭 시 확인 모달을 표시합니다.
+         */
+        function handleResetConfirmation() {
+             openConfirmModal(
+                "게임 초기화를 확인하시겠어요?", 
+                `모든 게임 기록과 설정을 초기 상태로 되돌립니다.`, 
+                resetToInitialState
+            );
+        }
+
+
+        // --- 게임 초기화 및 스케줄링 ---
+
+        /**
+         * 1번부터 18번 홀 버튼을 생성하고 전/후반으로 나누어 표시합니다.
+         */
+        function generateHoleButtons() {
+            const frontContainer = document.getElementById('hole-buttons-front');
+            const backContainer = document.getElementById('hole-buttons-back');
+            
+            frontContainer.innerHTML = ''; 
+            backContainer.innerHTML = '';
+
+            for (let i = 1; i <= MAX_HOLES; i++) {
+                const button = document.createElement('button');
+                button.id = `hole-btn-${i}`;
+                button.className = 'hole-btn bg-gray-300 text-gray-700';
+                button.textContent = i;
+                button.disabled = false; 
+                // 함수명은 유지하되, 의미는 '홀 결과 보기'임
+                button.onclick = () => viewHoleResult(i);
+                
+                if (i <= 9) {
+                    frontContainer.appendChild(button);
+                } else {
+                    backContainer.appendChild(button);
+                }
+            }
+        }
+
+        /**
+         * 조커 스케줄을 초기화합니다.
+         */
+        function initializeJokerSchedule(jokerCount) {
+            if (jokerCount < 0 || jokerCount > MAX_HOLES) {
+                showMessage("🚨 조커 횟수는 0에서 18 사이여야 합니다.", 'red');
+                return false;
+            }
+
+            jokerSchedule = Array(MAX_HOLES).fill(false);
+            const trueIndices = Array.from({ length: MAX_HOLES }, (_, i) => i);
+            shuffleArray(trueIndices); 
+            
+            for (let i = 0; i < jokerCount; i++) {
+                if (trueIndices[i] !== undefined) {
+                    jokerSchedule[trueIndices[i]] = true;
+                }
+            }
+            
+            const remainingDisplay = document.getElementById('joker-remaining');
+            const maxJoker = parseInt(document.getElementById('joker-count-input').value, 10);
+            remainingDisplay.textContent = `${maxJoker} / ${MAX_HOLES}`;
+            return true;
+        }
+
+        /**
+         * 모달에서 '확인'을 눌렀을 때 실제 게임을 시작하는 함수입니다.
+         * (기존 initializeGame()의 핵심 로직)
+         */
+        function confirmGameStart() {
+            // 이 함수는 handleStartGameConfirmation() 모달의 콜백으로만 호출되어야 함.
+            if (teeOffOrder.length !== 4) {
+                 showMessage("🚨 먼저 '타순 결정'을 통해 타순을 지정해주세요.", 'red');
+                 return;
+            }
+            
+            const jokerCountInput = document.getElementById('joker-count-input').value;
+            const jokerCount = parseInt(jokerCountInput, 10);
+
+            if (!initializeJokerSchedule(jokerCount)) return;
+
+            currentHole = 1; 
+            holeResults = Array(MAX_HOLES).fill(null); 
+
+            // UI 상태 전환: 설정 영역 숨기고 게임 영역 표시
+            document.getElementById('setup-area').classList.add('hidden');
+            document.getElementById('game-area').classList.remove('hidden');
+
+            // N/A 표시 오류 해결 및 초기화
+            document.getElementById('current-hole-display').textContent = '1';
+            document.getElementById('result-area').classList.add('hidden');
+            
+            // 버튼 텍스트 수정
+            document.getElementById('start-game-button').textContent = "✅ 게임 진행 중 (설정 재확인)";
+            document.getElementById('next-draw-button').textContent = `🤝 1홀 팀 뽑기`;
+            document.getElementById('next-draw-button').disabled = false;
+            
+            generateHoleButtons();
+            removeHoleActiveClass();
+            
+            // 입력 필드 잠금 (게임 진행 중 설정 변경 불가)
+            PLAYER_INPUT_IDS.forEach(id => document.getElementById(id).disabled = true);
+            document.getElementById('shuffle-count-input').disabled = true;
+            document.getElementById('tee-off-select-button').disabled = true;
+            document.getElementById('joker-count-input').disabled = true;
+
+            // 메시지 수정
+            showMessage("✅ 뽑기 게임 시작! 1번 홀 팀을 뽑아주세요.", 'indigo');
+        }
+
+        /**
+         * 게임을 초기 상태로 되돌립니다. (새 게임 시작 시 호출)
+         */
+        function resetToInitialState() {
+            currentHole = 0;
+            holeResults = [];
+            teeOffOrder = [];
+            jokerSchedule = [];
+
+            // UI 상태 전환: 게임 영역 숨기고 설정 영역 표시
+            document.getElementById('game-area').classList.add('hidden');
+            document.getElementById('setup-area').classList.remove('hidden');
+
+            // 기타 UI 초기화
+            document.getElementById('result-area').classList.add('hidden');
+            document.getElementById('current-hole-display').textContent = 'N/A';
+            document.getElementById('joker-remaining').textContent = 'N/A';
+            
+            // 버튼 및 입력 필드 활성화
+            document.getElementById('start-game-button').textContent = "3. 뽑기 게임 시작!";
+            document.getElementById('start-game-button').disabled = true; 
+            document.getElementById('shuffle-count-input').disabled = false;
+            document.getElementById('joker-count-input').disabled = false;
+            document.getElementById('tee-off-select-button').disabled = true; // 프로 입력 후 활성화
+
+            // 프로 입력 필드 활성화
+            PLAYER_INPUT_IDS.forEach(id => document.getElementById(id).disabled = false);
+
+            // 버튼 텍스트 수정
+            document.getElementById('tee-off-display').innerHTML = '타순을 정해주세요!';
+            document.getElementById('tee-off-select-button').textContent = '🎲 라운드 타순 운명 뽑기';
+            
+            // 전/후반 버튼 영역 초기화
+            document.getElementById('hole-buttons-front').innerHTML = '';
+            document.getElementById('hole-buttons-back').innerHTML = '';
+
+            // 프로 입력창/리스트 상태 업데이트 (유효성 검사 트리거)
+            updatePlayerList(); 
+            
+            showMessage("🔄 게임이 초기화되었습니다. 설정을 다시 해주세요.", 'yellow');
+        }
+
+
+        /**
+         * 게임 종료 시, 결과를 요약하여 모달에 표시합니다.
+         * (수정) 이제 게임 상태를 유지하고 모달만 엽니다. 초기화는 모달 안에서 수행됩니다.
+         */
+        function showFinalSummary() {
+            const summaryContainer = document.getElementById('final-results-summary');
+            const summaryMessage = document.getElementById('game-summary-message');
+            summaryContainer.innerHTML = '';
+            
+            let winCount = 0;
+            let lossCount = 0;
+            let tieCount = 0; 
+
+            const playedHoles = holeResults.filter(r => r !== null);
+            if (playedHoles.length === 0) {
+                 summaryMessage.textContent = "⚠️ 뽑기된 홀이 없어 표시할 결과가 없습니다. '새 게임 시작' 버튼을 눌러 게임을 시작하세요.";
+                 summaryContainer.innerHTML = '';
+                 openModal();
+                 return;
+            }
+
+            holeResults.forEach((result, index) => {
+                const holeNumber = index + 1;
+                
+                if (result) {
+                    let scoreText = '동점'; 
+                    let bgColor = 'score-tie'; 
+                    
+                    if (result.score === TEAM_SCORE.RED_WIN) {
+                        scoreText = `${TEAM_COLORS[1]} 승`; 
+                        winCount++;
+                        bgColor = 'score-win';
+                    } else if (result.score === TEAM_SCORE.BLUE_WIN) {
+                        scoreText = `${TEAM_COLORS[2]} 승`;
+                        lossCount++;
+                        bgColor = 'score-loss';
+                    } else { // TEAM_SCORE.TIE
+                        scoreText = '동점 (타이)'; 
+                        tieCount++;
+                        bgColor = 'score-tie';
+                    }
+                    
+                    const item = document.createElement('div');
+                    // 팀 매칭 프로 이름을 표시하기 위해 flex-col로 변경
+                    item.className = `result-grid-item flex-col items-start ${bgColor} p-3`; 
+                    
+                    // 조커 홀 표시
+                    const jokerIcon = result.isJoker ? '<span class="text-yellow-700 font-extrabold ml-1">👑</span>' : '';
+                    
+                    // 2. 팀 매칭 프로 이름 표시 추가
+                    item.innerHTML = `
+                        <div class="w-full flex justify-between items-center mb-1 pb-1 border-b border-opacity-30">
+                            <span class="font-extrabold text-lg">${holeNumber}H ${jokerIcon}</span>
+                            <span class="text-sm font-extrabold">${scoreText}</span>
+                        </div>
+                        <div class="text-xs w-full text-left leading-tight mt-1">
+                            <p class="font-semibold text-red-700">${TEAM_COLORS[1]}: ${result.team1.join(' & ')}</p>
+                            <p class="font-semibold text-blue-700">${TEAM_COLORS[2]}: ${result.team2.join(' & ')}</p>
+                        </div>
+                    `;
+                    summaryContainer.appendChild(item);
+                }
+            });
+
+            // 최종 메시지 (수정) T1/T2 -> RED/BLUE
+            summaryMessage.innerHTML = `
+                총 ${playedHoles.length} 홀 완료 | 
+                ${TEAM_COLORS[1]} 승: <span class="text-red-700 font-extrabold">${winCount}</span> | 
+                ${TEAM_COLORS[2]} 승: <span class="text-blue-700 font-extrabold">${lossCount}</span> | 
+                동점: <span class="text-teal-700 font-extrabold">${tieCount}</span>
+            `;
+
+            // 게임 상태를 초기화하지 않고 모달 표시
+            openModal();
+        }
+
+        // --- 게임 진행 및 결과 렌더링 로직 ---
+
+        /**
+         * 현재 홀의 팀을 결정합니다.
+         */
+        function determineTeams(players, isJokerHole) {
+            const teamResult = { 
+                hole: currentHole,
+                team1: [], 
+                team2: [], 
+                drawnPlayers: [], 
+                joker: null,
+                isJoker: isJokerHole,
+                score: null, 
+                teeOffOrder: [...teeOffOrder] 
+            };
+
+            if (isJokerHole) {
+                const shuffledPlayers = shuffleArray([...players]);
+                const jokerPlayer = shuffledPlayers.pop();
+                teamResult.joker = jokerPlayer;
+
+                let remainingSticks = [DRAW_STICKS.RED, DRAW_STICKS.RED, DRAW_STICKS.BLUE];
+                shuffleArray(remainingSticks);
+                
+                let assignment = {};
+                assignment[jokerPlayer] = DRAW_STICKS.JOKER;
+                shuffledPlayers.forEach((p, i) => assignment[p] = remainingSticks[i]);
+
+                const blueStickPlayer = shuffledPlayers.find((p) => assignment[p] === DRAW_STICKS.BLUE);
+                const redStickPlayers = shuffledPlayers.filter((p) => assignment[p] === DRAW_STICKS.RED);
+
+                // 팀 1: 조커 + 블루 (2명) - 조커가 BLUE 스틱을 뽑은 플레이어와 한 팀
+                teamResult.team1 = [jokerPlayer, blueStickPlayer]; 
+                
+                // 팀 2: 레드 2명 (2명)
+                teamResult.team2 = redStickPlayers; 
+                
+                // 뽑기 상세 내역을 위해 모든 프로 할당 저장
+                players.forEach(p => {
+                    const draw = teamResult.drawnPlayers.find(dp => dp.name === p);
+                    if(!draw) {
+                        teamResult.drawnPlayers.push({ name: p, stick: assignment[p] || DRAW_STICKS.JOKER });
+                    }
+                });
+
+            } else {
+                let sticksToAssign = [DRAW_STICKS.RED, DRAW_STICKS.RED, DRAW_STICKS.BLUE, DRAW_STICKS.BLUE];
+                shuffleArray(sticksToAssign);
+                
+                let assignment = {};
+                players.forEach((p, i) => {
+                    assignment[p] = sticksToAssign[i];
+                    teamResult.drawnPlayers.push({ name: p, stick: sticksToAssign[i] });
+                });
+                
+                teamResult.team1 = players.filter(p => assignment[p] === DRAW_STICKS.RED);
+                teamResult.team2 = players.filter(p => assignment[p] === DRAW_STICKS.BLUE);
+            }
+
+            return teamResult;
+        }
+
+        /**
+         * 승리 팀 선택 시 시각적 요소를 업데이트하고 점수를 기록합니다.
+         * @param {number} holeNumber - 현재 표시 중인 홀 번호
+         * @param {boolean} initialize - 초기화 모드 (스코어 커밋 없이 시각적 상태만 업데이트)
+         */
+        function updateTeamSelectionVisuals(holeNumber, initialize = false) {
+            const holeIndex = holeNumber - 1;
+            const result = holeResults[holeIndex];
+
+            if (!result) return;
+            
+            const team1Box = document.getElementById('team1-players');
+            const team2Box = document.getElementById('team2-players');
+            const scoreStatus = document.getElementById('score-status');
+
+            team1Box.classList.remove('team-selected-win');
+            team2Box.classList.remove('team-selected-loss');
+            
+            team1Box.classList.add('border-red-400', 'text-red-700');
+            team2Box.classList.add('border-blue-400', 'text-blue-700');
+            
+            let scoreText = '동점'; 
+
+            if (result.score === TEAM_SCORE.RED_WIN) {
+                team1Box.classList.add('team-selected-win');
+                scoreText = `${TEAM_COLORS[1]} 승리`; 
+            } else if (result.score === TEAM_SCORE.BLUE_WIN) {
+                team2Box.classList.add('team-selected-loss');
+                scoreText = `${TEAM_COLORS[2]} 승리`;
+            } 
+            
+            // 문구 간소화
+            scoreStatus.textContent = `⭐ 현재 기록: ${scoreText} (클릭하여 수정 가능)`;
+        }
+
+        /**
+         * 팀 박스 클릭 시 승리 팀을 토글합니다.
+         * @param {number} clickedTeam - 클릭된 팀 번호 (1: RED, 2: BLUE)
+         */
+        function toggleWinningTeam(clickedTeam) {
+            // 현재 표시 중인 홀 번호를 DOM에서 가져옵니다.
+            const holeNumberElement = document.getElementById('result-hole-number');
+            const holeNumber = parseInt(holeNumberElement.textContent, 10);
+            const holeIndex = holeNumber - 1;
+
+            if (isNaN(holeNumber) || holeIndex < 0 || holeIndex >= MAX_HOLES || !holeResults[holeIndex]) {
+                 showMessage("🚨 현재 표시된 홀이 없거나 유효하지 않습니다. 먼저 팀을 뽑아주세요.", 'red');
+                 return;
+            }
+            
+            const currentResult = holeResults[holeIndex];
+            let nextScoreValue = TEAM_SCORE.TIE; // Default to TIE
+
+            if (clickedTeam === 1) {
+                // RED 팀 클릭: 현재 RED 승리면 TIE로, 아니면 RED 승리(WIN)로 토글
+                nextScoreValue = (currentResult.score === TEAM_SCORE.RED_WIN) ? TEAM_SCORE.TIE : TEAM_SCORE.RED_WIN;
+            } else if (clickedTeam === 2) {
+                // BLUE 팀 클릭: 현재 BLUE 승리면 TIE로, 아니면 BLUE 승리(LOSS)로 토글
+                nextScoreValue = (currentResult.score === TEAM_SCORE.BLUE_WIN) ? TEAM_SCORE.TIE : TEAM_SCORE.BLUE_WIN;
+            }
+            
+            // 1. 점수 업데이트 및 UI 반영
+            _commitScore(nextScoreValue, holeNumber);
+
+            // 2. 시각적 업데이트 (점수 업데이트 후 결과 객체를 새로 읽어서 반영)
+            updateTeamSelectionVisuals(holeNumber, true);
+        }
+
+        /**
+         * 팀 결정 결과 (Team Draw Result)를 UI에 렌더링합니다.
+         */
+        function renderResult(result, holeNumber) {
+            const resultArea = document.getElementById('result-area');
+            
+            // 팀 박스에서 애니메이션 클래스 제거
+            document.getElementById('team1-players').classList.remove('shuffling-name');
+            document.getElementById('team2-players').classList.remove('shuffling-name');
+
+            resultArea.classList.remove('hidden');
+            document.getElementById('result-hole-number').textContent = holeNumber;
+
+            const jokerStatusElement = document.getElementById('joker-status');
+            if (result.isJoker) {
+                jokerStatusElement.innerHTML = `👑 조커 홀: <span class="text-2xl font-extrabold text-yellow-800">${result.joker}</span> 프로`;
+                jokerStatusElement.className = 'text-center font-bold text-xl mb-4 p-2 rounded-lg bg-yellow-100 text-yellow-800';
+            } else {
+                jokerStatusElement.textContent = `⚪ 일반 홀 (2 vs 2)`;
+                jokerStatusElement.className = 'text-center font-bold text-lg mb-4 p-2 rounded-lg bg-gray-100 text-gray-700';
+            }
+
+            // 최종 결정된 팀 이름 표시: 제목과 프로 목록 분리
+            document.getElementById('team1-players').innerHTML = 
+                `<span class="text-xl font-extrabold text-red-700 mb-1">${TEAM_COLORS[1]}</span>
+                 <span class="text-lg font-bold">${result.team1.join(' & ')}</span>`;
+            document.getElementById('team2-players').innerHTML = 
+                `<span class="text-xl font-extrabold text-blue-700 mb-1">${TEAM_COLORS[2]}</span>
+                 <span class="text-lg font-bold">${result.team2.join(' & ')}</span>`;
+
+            // 뽑기 상세 텍스트 수정
+            let drawDetails = '뽑기 운명 스틱 결과 (타순 순): ';
+            result.teeOffOrder.forEach((player, index) => {
+                const draw = result.drawnPlayers.find(p => p.name === player);
+                if (draw) {
+                    let stickDisplay = draw.stick;
+                    let colorClass = 'text-gray-600';
+                    
+                    if (draw.stick === DRAW_STICKS.RED) { colorClass = 'text-red-600'; stickDisplay = '레드'; } 
+                    else if (draw.stick === DRAW_STICKS.BLUE) { colorClass = 'text-blue-600'; stickDisplay = '블루'; } 
+                    else if (draw.stick === DRAW_STICKS.JOKER) { colorClass = 'text-yellow-700 font-extrabold'; stickDisplay = '조커'; }
+                    
+                    drawDetails += `<span class="${colorClass}">${player}(${stickDisplay})</span>`;
+                    if (index < result.teeOffOrder.length - 1) { drawDetails += ' / '; }
+                }
+            });
+            document.getElementById('draw-details').innerHTML = drawDetails;
+
+            // 시각적 상태 업데이트 (점수 상태 반영)
+            updateTeamSelectionVisuals(holeNumber, true); 
+
+            removeHoleActiveClass();
+            document.getElementById(`hole-btn-${holeNumber}`).classList.add('hole-active');
+            
+            updateNextDrawButtonState();
+
+            // 시각적 요소 추가: 결과 영역에 애니메이션 적용
+            resultArea.classList.remove('result-pulse');
+            // DOM reflow를 위한 트릭
+            void resultArea.offsetWidth; 
+            resultArea.classList.add('result-pulse');
+            
+            // 결과 영역으로 스크롤하여 바로 볼 수 있게 처리
+            resultArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function removeHoleActiveClass() {
+            for (let i = 1; i <= MAX_HOLES; i++) {
+                const btn = document.getElementById(`hole-btn-${i}`);
+                if (btn) {
+                    btn.classList.remove('hole-active');
+                }
+            }
+        }
+
+        function viewHoleResult(holeNumber) {
+            const result = holeResults[holeNumber - 1];
+            
+            if (!result) {
+                 showMessage(`⚠️ ${holeNumber}홀은 아직 팀을 뽑지 않았습니다.`, 'red');
+                 return;
+            }
+
+            renderResult(result, holeNumber);
+        }
+
+        function updateHoleButtonVisuals(holeNumber) {
+            const result = holeResults[holeNumber - 1];
+            const button = document.getElementById(`hole-btn-${holeNumber}`);
+            
+            if (!button || !result) return;
+            
+            button.className = 'hole-btn'; 
+
+            if (result.score === TEAM_SCORE.RED_WIN) {
+                button.classList.add('score-win');
+            } else if (result.score === TEAM_SCORE.BLUE_WIN) {
+                button.classList.add('score-loss');
+            } else { // TEAM_SCORE.TIE (동점)
+                button.classList.add('score-tie'); 
+            }
+            
+            button.disabled = false;
+        }
+
+        function updateNextDrawButtonState() {
+            const nextDrawButton = document.getElementById('next-draw-button');
+
+            if (currentHole > MAX_HOLES) {
+                // 버튼 텍스트 수정
+                nextDrawButton.textContent = "18홀 팀 뽑기 완료!";
+                nextDrawButton.disabled = true;
+            } else {
+                nextDrawButton.disabled = false;
+                // 버튼 텍스트 수정
+                nextDrawButton.textContent = `🤝 ${currentHole}홀 팀 뽑기`;
+            }
+        }
+
+        /**
+         * 실제 스코어 값을 저장하거나 수정합니다.
+         * @param {string} scoreValue - 'WIN', 'LOSS', 'TIE'
+         * @param {number} holeNumber - 현재 수정하는 홀 번호
+         */
+        function _commitScore(scoreValue, holeNumber) {
+            const holeIndex = holeNumber - 1;
+
+            if (holeIndex < 0 || holeIndex >= MAX_HOLES || !holeResults[holeIndex]) {
+                showMessage("🚨 저장할 유효한 홀 결과가 없습니다.", 'red');
+                return;
+            }
+            
+            const oldScore = holeResults[holeIndex].score;
+            
+            holeResults[holeIndex].score = scoreValue;
+            updateHoleButtonVisuals(holeNumber);
+            
+            let scoreText;
+            if (scoreValue === TEAM_SCORE.RED_WIN) scoreText = `${TEAM_COLORS[1]} 승리`; 
+            else if (scoreValue === TEAM_SCORE.BLUE_WIN) scoreText = `${TEAM_COLORS[2]} 승리`; 
+            else scoreText = '동점'; 
+            
+            
+            if (oldScore === null || oldScore === TEAM_SCORE.TIE) { 
+                 showMessage(`✅ ${holeNumber}홀 결과가 [${scoreText}]로 저장되었습니다!`, 'green');
+            } else if (oldScore !== scoreValue) {
+                 showMessage(`✏️ ${holeNumber}홀 결과가 [${scoreText}]로 수정되었습니다!`, 'indigo');
+            }
+            
+            updateNextDrawButtonState();
+        }
+
+        /**
+         * 뽑기(팀 뽑기)를 처리하고 결과를 저장합니다. (애니메이션 추가)
+         */
+        async function handleDraw() {
+            
+            if (currentHole > MAX_HOLES) {
+                showMessage("🎉 18홀 팀 뽑기 완료! 최종 점수를 확인하고 결과 요약 버튼을 누르세요.", 'yellow');
+                return;
+            }
+
+            const nextDrawButton = document.getElementById('next-draw-button');
+            nextDrawButton.disabled = true; // 뽑기 진행 중 버튼 비활성화
+
+            const team1Box = document.getElementById('team1-players');
+            const team2Box = document.getElementById('team2-players');
+            const resultArea = document.getElementById('result-area');
+            
+            resultArea.classList.remove('hidden'); // 애니메이션을 위해 결과 영역을 먼저 표시
+            
+            // 결과 영역으로 스크롤하여 애니메이션이 보이도록 처리
+            resultArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            // --- 1. Animation Setup ---
+            const drawHoleNumber = currentHole;
+            const isJokerHole = jokerSchedule[drawHoleNumber - 1];
+
+            // 임시 애니메이션 문구 설정
+            team1Box.innerHTML = `<span class="text-3xl font-extrabold text-red-700">${TEAM_COLORS[1]}</span>`;
+            team2Box.innerHTML = `<span class="text-3xl font-extrabold text-blue-700">${TEAM_COLORS[2]}</span>`;
+            document.getElementById('score-status').textContent = '... 운명의 팀을 뽑는 중 ...';
+            
+            const animationDuration = 2500; // 2.5초 (보통 속도로 조정됨)
+            let animationStartTime = performance.now();
+            let animationFrameId;
+
+            // --- 2. Animation Loop ---
+            const animateDraw = (timestamp) => {
+                if (timestamp - animationStartTime < animationDuration) {
+                    // 프로 목록을 무작위로 섞어 표시
+                    const playersCopy = shuffleArray([...currentPlayers]);
+                    
+                    const t1_shuffled = playersCopy.slice(0, 2).map(p => `<span class="shuffling-name text-red-600">${p}</span>`).join(' & ');
+                    const t2_shuffled = playersCopy.slice(2, 4).map(p => `<span class="shuffling-name text-blue-600">${p}</span>`).join(' & ');
+
+                    // 컨텐츠 업데이트
+                    team1Box.innerHTML = `<span class="text-xl font-extrabold text-red-700 mb-1">${TEAM_COLORS[1]}</span><div class="p-1">${t1_shuffled}</div>`;
+                    team2Box.innerHTML = `<span class="text-xl font-extrabold text-blue-700 mb-1">${TEAM_COLORS[2]}</span><div class="p-1">${t2_shuffled}</div>`;
+                    
+                    animationFrameId = requestAnimationFrame(animateDraw);
+                } else {
+                    // Animation finished
+                    cancelAnimationFrame(animationFrameId);
+                    
+                    // --- 3. Determination and Rendering ---
+                    const result = determineTeams(currentPlayers, isJokerHole); 
+                    result.score = TEAM_SCORE.TIE;
+                    holeResults[drawHoleNumber - 1] = result;
+                    
+                    // 최종 결과 렌더링 (이 안에서 Pulse 애니메이션 적용)
+                    renderResult(result, drawHoleNumber);
+                    
+                    // 4. 버튼 상태 업데이트 
+                    updateHoleButtonVisuals(drawHoleNumber);
+        
+                    // 5. 남은 조커 횟수 업데이트
+                    const remaining = jokerSchedule.slice(drawHoleNumber).filter(j => j).length;
+                    const maxJoker = parseInt(document.getElementById('joker-count-input').value, 10);
+                    document.getElementById('joker-remaining').textContent = `${remaining} / ${maxJoker}`;
+                    
+                    // 6. 다음 홀 상태로 전환
+                    currentHole++;
+                    
+                    // 7. 다음 뽑기 버튼 상태 업데이트 (재활성화)
+                    updateNextDrawButtonState();
+        
+                    if (drawHoleNumber === MAX_HOLES) {
+                         showMessage("🎉 18홀 팀 뽑기 완료! 승패를 기록하고 결과 요약 버튼을 누르세요.", 'yellow');
+                    } else {
+                         showMessage(`✨ ${drawHoleNumber}홀 팀 뽑기 완료. 승패를 기록하거나 다음 홀로 진행하세요.`, 'indigo');
+                    }
+                }
+            };
+
+            // Start animation
+            animateDraw(animationStartTime);
+        }
+
+        // --- 초기화 ---
+        window.onload = () => {
+             // 페이지 로드 시 프로 목록 유효성을 체크하여 버튼 활성화 상태를 결정
+             updatePlayerList(); 
+             // 초기 상태로 완전히 초기화하여 시작 (재시작 포함)
+             resetToInitialState();
+             closeModal();
+             closeConfirmModal(); // 새 모달도 닫아줍니다.
+        };
+
+    </script>
+</body>
+</html>
+
