@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>골프 스코어 심플 개선판 (V12 - 합계 최적화)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Inter 폰트를 기본으로 설정 */
+        body { font-family: "Inter", sans-serif; }
+        
+        /* 모바일 터치를 위한 최소 크기 보장 */
+        .counter-button { min-width: 4rem; min-height: 4rem; }
+        .par-button, .score-cell { cursor: pointer; }
+        
+        /* 스코어카드 테이블 스타일 */
+        .scorecard-table { width: 100%; border-collapse: collapse; }
+        .scorecard-table th, .scorecard-table td {
+            border-bottom: 1px solid #e5e7eb; /* Gray-200, 하단 줄만 유지 */
+            padding: 10px 4px;
+            text-align: center;
+            font-size: 0.875rem; /* text-sm */
+        }
+        .scorecard-table th { background-color: #f9fafb; } /* Light Gray for Hole/Header */
+        .scorecard-table thead th { border-bottom: 2px solid #10b981; } /* Accent line for header */
+
+        /* 스코어별 색상 정의 (Diff에 적용) */
+        .score-eagle { background-color: #065f46; color: white; } /* Dark Green for Eagle/Albatross */
+        .score-birdie { background-color: #3b82f6; color: white; } /* Blue for Birdie */
+        .score-par { background-color: #374151; color: white; } /* Dark Gray for Par */
+        .score-bogey { background-color: #f97316; color: white; } /* Orange for Bogey */
+        .score-dbogey { background-color: #ef4444; color: white; } /* Red for Double Bogey+ */
+        .score-yangpa { background-color: #9333ea; color: white; } /* Purple for Double Par (양파) */
+        
+        /* 합계 행 스타일 */
+        .section-total-row th, .section-total-row td {
+            background-color: #d1fae5; /* Green-100 */
+            font-weight: bold;
+            border-top: 3px solid #10b981; /* Accent Line */
+        }
+        
+        /* 전반/후반 구분선 */
+        .section-divider {
+            background-color: #e5e7eb; /* Gray-200 */
+            font-size: 1rem;
+            font-weight: bold;
+            color: #4b5563;
+        }
+
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'golf-green': '#10b981', /* Emerald Green */
+                        'dark-green': '#059669',
+                        'light-gray': '#f4f4f5', /* Zinc-100 for background */
+                    },
+                }
+            }
+        }
+        
+        // --- App State (전역 상태 및 Local Storage 키) ---
+        window.scorecard = []; // 18홀 스코어카드 데이터 배열
+        window.currentHoleIndex = -1; // 현재 모달에서 편집 중인 홀 (0-17)
+        const LOCAL_STORAGE_KEY = 'golfScorecardData_v4_18H'; // 18홀 버전 키
+        const MOCK_HANDICAP = 13; // 합계 최적화를 위해 임의로 적용한 핸디캡
+
+        // 18홀 초기 스코어카드 구조 (Par 72 기준의 일반적인 Par 설정)
+        // Front 9 (1-9): 4, 4, 3, 4, 5, 4, 3, 4, 5 (Par 36)
+        // Back 9 (10-18): 4, 4, 3, 4, 5, 4, 3, 4, 5 (Par 36)
+        const initialParSequence = [4, 4, 3, 4, 5, 4, 3, 4, 5, 4, 4, 3, 4, 5, 4, 3, 4, 5];
+        
+        const initialHoleData = Array.from({ length: 18 }, (_, i) => ({
+            hole: i + 1,
+            par: initialParSequence[i], 
+            score: 0,
+            strokesNonPutt: 0,
+            putts: 0,
+            penalty1x: 0,
+            penalty2x: 0,
+        }));
+
+        /**
+         * Local Storage에서 스코어카드 데이터를 로드하거나 초기값을 반환합니다.
+         */
+        function loadScorecardFromLocalStorage() {
+            try {
+                const storedData = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (storedData) {
+                    const parsedData = JSON.parse(storedData);
+                    if (Array.isArray(parsedData) && parsedData.length === 18) {
+                        // 저장된 데이터가 18홀 형식이면 로드
+                        window.scorecard = parsedData.map((hole, i) => ({
+                             ...initialHoleData[i], // 기본 구조와 Par 값 보존
+                             ...hole // 저장된 값 (score, putts 등) 덮어쓰기
+                        }));
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.error("Local Storage 로드 오류 (18H):", e);
+            }
+            window.scorecard = initialHoleData;
+            console.log("새 18홀 스코어카드로 초기화되었습니다.");
+        }
+
+        /**
+         * 현재 스코어카드 상태를 Local Storage에 저장합니다.
+         */
+        function saveScorecardToLocalStorage() {
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(window.scorecard));
+                console.log("Scorecard saved to Local Storage (V4_18H).");
+            } catch (e) {
+                console.error("Local Storage 저장 오류:", e);
+            }
+        }
+        
+        // --- Core Application Logic (계산/모달/렌더링) ---
+
+        /**
+         * 최종 타수와 Par 정보를 바탕으로 스코어 메시지를 생성하고 CSS 클래스를 반환합니다.
+         */
+        function getScoreResult(totalScore, scoreDiff, par) {
+            const doublePar = 2 * par; 
+            let result = { text: '-', colorClass: 'text-gray-500 bg-gray-100', diffText: '-' };
+            
+            if (totalScore === 0 || par === 0) return result;
+            
+            // 1. 점수 차이 텍스트 설정
+            result.diffText = scoreDiff > 0 ? `+${scoreDiff}` : (scoreDiff < 0 ? `${scoreDiff}` : 'E');
+            result.text = `${totalScore}타`;
+
+            // 2. Double Par 룰 우선 적용 (Double Par 이상)
+            if (totalScore >= doublePar) { 
+                result.text = "양파 (Double Par)"; 
+                result.colorClass = "score-yangpa";
+                return result; 
+            } 
+            
+            // 3. 일반 스코어 계산 (Score Diff 기반)
+            if (scoreDiff <= -3) {
+                result.text = "Albatross"; 
+                result.colorClass = "score-eagle";
+            } else if (scoreDiff === -2) {
+                result.text = "Eagle";
+                result.colorClass = "score-eagle";
+            } else if (scoreDiff === -1) {
+                result.text = "Birdie";
+                result.colorClass = "score-birdie";
+            } else if (scoreDiff === 0) {
+                result.text = "Par";
+                result.colorClass = "score-par";
+            } else if (scoreDiff === 1) {
+                result.text = "Bogey"; 
+                result.colorClass = "score-bogey";
+            } else if (scoreDiff === 2) { 
+                result.text = "Double Bogey"; 
+                result.colorClass = "score-dbogey";
+            } else if (scoreDiff === 3) { 
+                result.text = "Triple Bogey"; 
+                result.colorClass = "score-dbogey";
+            } else if (scoreDiff === 4) { 
+                result.text = "Quadruple Bogey"; 
+                result.colorClass = "score-dbogey";
+            } else if (scoreDiff === 5) { 
+                result.text = "Quintuple Bogey"; // 퀸투플 보기 (+5)
+                result.colorClass = "score-dbogey";
+            } else if (scoreDiff >= 6) { 
+                result.text = "Sextuple Bogey+"; // 섹스튜플 보기 (+6 이상)
+                result.colorClass = "score-dbogey";
+            }
+            
+            return result;
+        }
+        
+        /**
+         * 18홀 스코어카드 전체를 렌더링하고 총합계를 표시합니다. (단일 테이블로 통합)
+         */
+        function renderScorecard18Holes() {
+            const scorecardBody = document.getElementById('scorecard_body');
+            scorecardBody.innerHTML = '';
+            
+            let totalPar = 0;
+            let totalScore = 0;
+            let frontNinePar = 0;
+            let frontNineScore = 0;
+            let backNinePar = 0;
+            let backNineScore = 0;
+            
+            // 전반 9홀 헤더 추가
+            scorecardBody.innerHTML += `
+                <tr>
+                    <td colspan="4" class="section-divider py-3 bg-gray-100 border-t-4 border-gray-300">
+                        ⛳ 전반 9홀 (OUT)
+                    </td>
+                </tr>
+            `;
+
+            window.scorecard.forEach((hole, index) => {
+                totalPar += hole.par;
+                totalScore += hole.score;
+                
+                const scoreDiff = hole.score - hole.par;
+                const scoreResult = getScoreResult(hole.score, scoreDiff, hole.par);
+                
+                const isFrontNine = index < 9;
+                if (isFrontNine) {
+                    frontNinePar += hole.par;
+                    frontNineScore += hole.score;
+                } else {
+                    backNinePar += hole.par;
+                    backNineScore += hole.score;
+                }
+                
+                // 전반/후반 구분선 삽입 (10번 홀 시작 전)
+                if (index === 9) {
+                    // 전반 합계 행 삽입
+                    scorecardBody.innerHTML += createSectionTotalRow('전반', frontNinePar, frontNineScore, true);
+                    
+                    // 후반 시작 구분선
+                    scorecardBody.innerHTML += `
+                        <tr>
+                            <td colspan="4" class="section-divider py-3 bg-gray-100 border-t-4 border-gray-300">
+                                ⛳ 후반 9홀 (IN)
+                            </td>
+                        </tr>
+                    `;
+                }
+
+                const row = `
+                    <tr class="hover:bg-gray-50 transition-colors cursor-pointer" onclick="openScoreModal(${index})">
+                        <!-- Hole -->
+                        <th class="font-bold text-gray-800">${hole.hole}</th>
+                        <!-- Par -->
+                        <td class="text-lg font-medium text-gray-700">${hole.par}</td>
+                        <!-- Score -->
+                        <td class="font-extrabold text-xl text-gray-900">
+                            ${hole.score > 0 ? hole.score : '<span class="text-gray-400">-</span>'}
+                        </td>
+                        <!-- Diff (Badge) -->
+                        <td>
+                            <div class="inline-block text-xs font-bold rounded-full py-1 px-2 ${hole.score > 0 ? scoreResult.colorClass : 'text-gray-500 bg-gray-100'} transition duration-150 shadow-sm">
+                                ${hole.score > 0 ? scoreResult.diffText : '-'}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                scorecardBody.innerHTML += row;
+            });
+            
+            // 후반 합계 행 삽입 (18홀 완료 후)
+            scorecardBody.innerHTML += createSectionTotalRow('후반', backNinePar, backNineScore, false);
+
+            // 최종 총합계 계산 및 렌더링 (순 타수 강조 최적화)
+            const totalScoreDiff = totalScore - totalPar;
+            
+            // 순 타수 계산 (총 타수 - 핸디캡)
+            const netScore = totalScore > 0 ? totalScore - MOCK_HANDICAP : 0;
+            const netDiff = netScore - totalPar; // 순 타수 대비 Par 차이
+            
+            let diffTextTotal = ''; // 총 타수 대비 Par 차이
+            if (totalScore === 0) diffTextTotal = '-'; 
+            else if (totalScoreDiff > 0) diffTextTotal = `+${totalScoreDiff}`;
+            else if (totalScoreDiff < 0) diffTextTotal = `${totalScoreDiff}`;
+            else diffTextTotal = 'E'; // Even Par
+
+            let netDiffText = ''; // 순 타수 대비 Par 차이
+            if (netScore === 0) netDiffText = '-'; 
+            else if (netDiff > 0) netDiffText = `+${netDiff}`;
+            else if (netDiff < 0) netDiffText = `${netDiff}`;
+            else netDiffText = 'E'; // Even Par
+
+
+            const totalsDiv = document.getElementById('scorecard_totals');
+            totalsDiv.innerHTML = `
+                <div class="p-4 bg-dark-green text-white rounded-b-xl">
+                    <!-- 1. Gross Score 및 Par 정보 -->
+                    <div class="flex justify-between items-center pb-2 border-b border-white/20">
+                         <span class="text-lg font-extrabold opacity-90">총 타수 (GROSS) / Par</span>
+                         <div class="flex space-x-4 items-baseline">
+                            <span class="text-xl font-light opacity-80">Par ${totalPar}</span>
+                            <span class="text-3xl font-extrabold">${totalScore > 0 ? totalScore : '-'}</span>
+                            <div class="text-xl font-extrabold px-3 py-1 bg-white/20 rounded-lg">
+                               ${diffTextTotal}
+                            </div>
+                         </div>
+                    </div>
+                    
+                    <!-- 2. NET SCORE 강조 (최적화된 핵심 정보) -->
+                    <div class="pt-3 flex justify-between items-center bg-dark-green text-white">
+                        <div class="flex flex-col">
+                            <span class="text-xs font-medium text-white/70">적용 핸디캡 (HCP): ${MOCK_HANDICAP}</span>
+                            <span class="text-2xl font-black mt-1 text-yellow-300">순 타수 (NET SCORE)</span>
+                        </div>
+                        <div class="text-right">
+                             <span class="text-4xl font-black text-yellow-300">${netScore > 0 ? netScore : '-'}</span>
+                             <div class="text-base font-extrabold px-3 py-1 bg-white/20 rounded-lg mt-1 inline-block">
+                                Net Diff: ${netDiffText}
+                             </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        /**
+         * 섹션 합계 (전반/후반) 행을 생성합니다.
+         */
+        function createSectionTotalRow(sectionTitle, sectionTotalPar, sectionTotalScore, isFront) {
+            const sectionScoreDiff = sectionTotalScore - sectionTotalPar;
+            let sectionDiffText = sectionTotalScore === 0 ? '-' : (sectionScoreDiff > 0 ? `+${sectionScoreDiff}` : (sectionScoreDiff < 0 ? `${sectionScoreDiff}` : 'E'));
+
+            return `
+                <tr class="section-total-row">
+                    <th class="font-bold text-base bg-green-200">${sectionTitle} SUM</th>
+                    <td class="text-base font-bold bg-green-100">${sectionTotalPar}</td>
+                    <td class="text-xl font-extrabold bg-green-100">${sectionTotalScore > 0 ? sectionTotalScore : '-'}</td>
+                    <td class="bg-green-100">
+                         <div class="inline-block text-sm font-extrabold px-3 py-1 bg-dark-green text-white rounded-lg">
+                           ${sectionDiffText}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+
+
+        /**
+         * Par 값을 선택하고 UI를 업데이트합니다. (모달 내부)
+         */
+        window.selectPar = function(selectedPar, clickedButton) {
+            const selectorDiv = document.getElementById('modal_par_selector');
+            const parButtons = selectorDiv.querySelectorAll('.par-button');
+            
+            // 모든 버튼 초기화
+            parButtons.forEach(btn => {
+                btn.classList.remove('bg-golf-green', 'text-white', 'border-dark-green', 'shadow-md');
+                btn.classList.add('bg-gray-100', 'text-gray-900', 'border-gray-300', 'hover:bg-gray-200');
+            });
+
+            // 선택된 버튼 하이라이트
+            if (clickedButton) {
+                clickedButton.classList.remove('bg-gray-100', 'text-gray-900', 'border-gray-300', 'hover:bg-gray-200');
+                clickedButton.classList.add('bg-golf-green', 'text-white', 'border-dark-green', 'shadow-lg');
+            } 
+            
+            // 선택된 Par 값 업데이트
+            selectorDiv.setAttribute('data-selected-par', selectedPar);
+            document.getElementById('modal_current_par_display').innerText = selectedPar;
+
+            calculateScore();
+        }
+
+
+        /**
+         * 카운터 값을 변경하고 계산을 재실행합니다. (모달 내부)
+         */
+        window.changeCount = function(id, delta) {
+            const countElement = document.getElementById(id + '_count');
+            let currentValue = parseInt(countElement.innerText) || 0;
+            let newValue = currentValue + delta;
+
+            if (newValue < 0) newValue = 0;
+
+            countElement.innerText = newValue;
+            calculateScore();
+        }
+
+        /**
+         * 최종 스코어를 계산하고 결과를 표시합니다. (모달 내부)
+         */
+        function calculateScore() {
+            try {
+                const par = parseInt(document.getElementById('modal_par_selector').getAttribute('data-selected-par')) || 0;
+                const strokesNonPutt = parseInt(document.getElementById('strokes_non_putt_count').innerText) || 0;
+                const putts = parseInt(document.getElementById('putts_count').innerText) || 0;
+                const penalty1x = parseInt(document.getElementById('penalty_1x_count').innerText) || 0;
+                const penalty2x = parseInt(document.getElementById('penalty_2x_count').innerText) || 0;
+
+                // 타수: 코스 샷 + 퍼팅
+                const actualStrokes = strokesNonPutt + putts;
+                // 벌타: 1벌타 횟수 * 1 + 2벌타 횟수 * 2
+                const totalPenalties = (penalty1x * 1) + (penalty2x * 2);
+                // 최종 스코어 = 타수 + 벌타
+                const totalScore = actualStrokes + totalPenalties;
+
+                const scoreDifference = totalScore - par;
+
+                // 결과 표시 (totalScore, scoreDifference, par 모두 전달)
+                displayModalResult(totalScore, scoreDifference, par);
+            } catch (error) {
+                console.error("계산 오류:", error);
+                document.getElementById('modal_result_message').innerHTML = `
+                    <div class="p-3 bg-red-100 text-red-700 rounded-lg">
+                        ⚠️ 값을 정확히 입력해주세요.
+                    </div>
+                `;
+            }
+        }
+
+        /**
+         * 계산된 결과를 모달 UI에 표시합니다.
+         */
+        function displayModalResult(totalScore, scoreDifference, par) {
+            const resultDiv = document.getElementById('modal_result_message');
+            const scoreMsg = getScoreResult(totalScore, scoreDifference, par);
+            
+            // 모달의 '적용' 버튼에 계산된 최종 스코어 저장
+            const applyButton = document.getElementById('apply_score_button');
+            applyButton.setAttribute('data-score', totalScore);
+            applyButton.setAttribute('data-par', par);
+            applyButton.setAttribute('data-strokes', document.getElementById('strokes_non_putt_count').innerText);
+            applyButton.setAttribute('data-putts', document.getElementById('putts_count').innerText);
+            applyButton.setAttribute('data-p1x', document.getElementById('penalty_1x_count').innerText);
+            applyButton.setAttribute('data-p2x', document.getElementById('penalty_2x_count').innerText);
+            
+            // 0타일 경우 적용 버튼 비활성화 (버그 방지)
+            const isValidScore = totalScore > 0;
+            applyButton.disabled = !isValidScore;
+            applyButton.classList.toggle('opacity-50', !isValidScore);
+            
+            // 버튼 텍스트 업데이트
+            applyButton.innerText = `스코어 적용 (${totalScore}타)`;
+            
+            resultDiv.innerHTML = `
+                <div class="text-center p-4 bg-white border-t-4 border-dark-green rounded-b-xl shadow-inner mt-4">
+                    <p class="text-base text-gray-600 mb-2 font-medium">Par ${par} 홀 최종 결과</p>
+                    <div class="flex flex-col items-center justify-center space-y-3">
+                        <!-- 최종 스코어 -->
+                        <div class="flex items-center space-x-4">
+                            <span class="text-4xl font-extrabold text-gray-900">${totalScore}</span>
+                            <span class="text-xl text-gray-500">타</span>
+                        </div>
+                        
+                        <!-- 결과 메시지 (Diff Pill 스타일 재사용) -->
+                        <div class="flex items-center justify-center">
+                            <div class="text-lg font-bold rounded-full py-1 px-4 ${scoreMsg.colorClass} leading-none shadow">
+                                ${scoreMsg.text} (${scoreMsg.diffText})
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        /**
+         * 스코어 기록 모달을 엽니다.
+         * @param {number} index - 편집할 홀의 0-based 인덱스 (0-17)
+         */
+        window.openScoreModal = function(index) {
+            window.currentHoleIndex = index;
+            const holeData = window.scorecard[index];
+            
+            if (!holeData) return;
+            
+            document.getElementById('modal_hole_title').innerText = `${holeData.hole}번 홀 기록`;
+            
+            // 데이터 로드
+            loadScoreDataToModal(index);
+
+            // 모달 표시
+            document.getElementById('score_modal').classList.remove('hidden');
+            document.getElementById('modal_backdrop').classList.remove('hidden');
+        }
+        
+        /**
+         * 현재 편집 중인 홀의 데이터를 모달에 로드합니다.
+         */
+        function loadScoreDataToModal(index) {
+            const holeData = window.scorecard[index];
+            if (!holeData) return;
+            
+            // 1. Par 선택 로드
+            const targetPar = holeData.par || initialHoleData[index].par;
+            const targetButton = document.querySelector(`#modal_par_selector button[data-par="${targetPar}"]`);
+            
+            // Par 버튼을 찾아 선택 상태를 업데이트합니다.
+            // targetButton이 null일 수 있으므로, selectPar 내부에서 처리하도록 합니다.
+            window.selectPar(targetPar, targetButton);
+
+
+            // 2. 카운터 값 로드
+            document.getElementById('strokes_non_putt_count').innerText = holeData.strokesNonPutt || 0;
+            document.getElementById('putts_count').innerText = holeData.putts || 0;
+            document.getElementById('penalty_1x_count').innerText = holeData.penalty1x || 0;
+            document.getElementById('penalty_2x_count').innerText = holeData.penalty2x || 0;
+            
+            // 3. 최종 계산 및 결과 표시
+            calculateScore(); 
+        }
+
+        /**
+         * 모달을 닫습니다.
+         */
+        window.closeScoreModal = function() {
+            document.getElementById('score_modal').classList.add('hidden');
+            document.getElementById('modal_backdrop').classList.add('hidden');
+            window.currentHoleIndex = -1; // 인덱스 초기화
+        }
+
+        /**
+         * 계산된 스코어를 스코어카드에 적용하고 Local Storage에 저장합니다.
+         */
+        window.applyScore = function() {
+            if (window.currentHoleIndex === -1) return;
+
+            const applyButton = document.getElementById('apply_score_button');
+            const totalScore = parseInt(applyButton.getAttribute('data-score')) || 0;
+            const par = parseInt(applyButton.getAttribute('data-par')) || 0;
+            const strokes = parseInt(applyButton.getAttribute('data-strokes')) || 0;
+            const putts = parseInt(applyButton.getAttribute('data-putts')) || 0;
+            const p1x = parseInt(applyButton.getAttribute('data-p1x')) || 0;
+            const p2x = parseInt(applyButton.getAttribute('data-p2x')) || 0;
+
+            if (totalScore > 0) {
+                // 현재 상태 업데이트
+                const updatedScorecard = [...window.scorecard];
+                updatedScorecard[window.currentHoleIndex] = {
+                    ...updatedScorecard[window.currentHoleIndex],
+                    par: par,
+                    score: totalScore,
+                    strokesNonPutt: strokes,
+                    putts: putts,
+                    penalty1x: p1x,
+                    penalty2x: p2x,
+                };
+                window.scorecard = updatedScorecard;
+
+                // Local Storage에 저장
+                saveScorecardToLocalStorage();
+
+                // UI 업데이트
+                renderScorecard18Holes(); 
+
+                // 모달 닫기
+                closeScoreModal();
+            } else {
+                 console.error("적용할 유효한 점수가 없습니다.");
+            }
+        }
+
+        // 초기화
+        window.onload = function() {
+            loadScorecardFromLocalStorage(); // 데이터 로드
+            renderScorecard18Holes(); // UI 렌더링 (18홀)
+        };
+
+    </script>
+</head>
+<body class="bg-light-gray min-h-screen p-4 flex flex-col items-center">
+
+    <div class="w-full max-w-lg bg-white rounded-xl shadow-2xl overflow-hidden ring-4 ring-golf-green/20 mb-6">
+        
+        <!-- Header -->
+        <div class="bg-dark-green p-4 text-white">
+            <h1 class="text-xl font-bold text-center flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 mr-2">
+                    <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"></path>
+                    <path d="M12 18v-6l-4 4"></path>
+                    <path d="M12 6v6l4-4"></path>
+                </svg>
+                골프 스코어 기록표 (18홀) V12
+            </h1>
+            <p class="text-xs text-center opacity-80 mt-1">스코어를 터치하여 기록/수정하세요.</p>
+        </div>
+
+        <!-- Single Unified Scorecard Table -->
+        <div class="p-0 overflow-x-auto">
+            <table class="scorecard-table">
+                <thead>
+                    <tr class="bg-gray-100 font-semibold text-gray-700">
+                        <th class="w-[10%]">Hole</th>
+                        <th class="w-[15%]">Par</th>
+                        <th class="w-[30%]">Score</th>
+                        <th class="w-[35%]">Diff</th>
+                    </tr>
+                </thead>
+                <tbody id="scorecard_body">
+                    <!-- 18 Hole rows, section dividers, and totals will be rendered here by JavaScript -->
+                    <tr><td colspan="4" class="text-center py-4 text-gray-500">스코어 로드 중...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Grand Totals Display - 순 타수 강조 최적화 적용 -->
+        <div id="scorecard_totals">
+            <!-- Grand Totals will be displayed here -->
+        </div>
+    </div>
+
+
+    <!-- ========================================================================= -->
+    <!-- Score Input Modal -->
+    <!-- ========================================================================= -->
+
+    <!-- Backdrop -->
+    <div id="modal_backdrop" class="hidden fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity duration-300" onclick="closeScoreModal()"></div>
+
+    <!-- Modal Content -->
+    <div id="score_modal" class="hidden fixed inset-0 flex items-center justify-center p-4 z-50">
+        <div class="w-full max-w-md bg-white rounded-xl shadow-2xl overflow-hidden transform transition-all duration-300">
+            
+            <!-- Modal Header -->
+            <div class="bg-dark-green p-4 flex justify-between items-center text-white">
+                <h2 id="modal_hole_title" class="text-xl font-bold">N번 홀 기록</h2>
+                <button onclick="closeScoreModal()" class="text-white hover:text-gray-200 p-1 rounded-full transition-colors" aria-label="모달 닫기">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+
+                <!-- Par Input: Button Selector -->
+                <div class="border-b pb-4 mb-4">
+                    <label class="block text-sm font-semibold text-gray-700 mb-3">
+                        📌 홀의 기준 타수 (Par) - 현재: <span id="modal_current_par_display" class="font-bold text-dark-green">4</span>
+                    </label>
+                    <!-- grid-cols-4로 변경 및 Par 6 버튼 유지 -->
+                    <div id="modal_par_selector" data-selected-par="4" class="grid grid-cols-4 gap-2 mt-1">
+                        <button onclick="selectPar(3, this)" data-par="3" class="par-button py-3 rounded-xl text-xl font-bold border-2 transition duration-150 bg-gray-100 hover:bg-gray-200 shadow-md">Par 3</button>
+                        <button onclick="selectPar(4, this)" data-par="4" class="par-button py-3 rounded-xl text-xl font-bold border-2 transition duration-150 bg-gray-100 hover:bg-gray-200 shadow-md">Par 4</button>
+                        <button onclick="selectPar(5, this)" data-par="5" class="par-button py-3 rounded-xl text-xl font-bold border-2 transition duration-150 bg-gray-100 hover:bg-gray-200 shadow-md">Par 5</button>
+                        <button onclick="selectPar(6, this)" data-par="6" class="par-button py-3 rounded-xl text-xl font-bold border-2 transition duration-150 bg-gray-100 hover:bg-gray-200 shadow-md">Par 6</button>
+                    </div>
+                     <p class="text-xs text-gray-500 mt-2 text-center">선택된 Par 값으로 스코어 결과가 계산됩니다.</p>
+                </div>
+
+                <!-- 스트로크 입력 그룹 -->
+                <div class="bg-green-50 p-4 rounded-xl shadow-md border border-green-200">
+                    <h3 class="text-lg font-bold text-dark-green pb-3">1. 실제 스트로크 횟수</h3>
+                    
+                    <!-- 카운터: 코스 샷 -->
+                    <label class="block mb-4">
+                        <span class="block text-base font-medium text-gray-700 mb-1">① 코스 샷 (퍼팅 제외)</span>
+                        <div class="mt-1 flex items-center justify-between bg-white rounded-xl border-2 border-gray-300 shadow-lg overflow-hidden">
+                            <button onclick="changeCount('strokes_non_putt', -1)" class="counter-button flex items-center justify-center text-3xl font-bold p-3 bg-red-100 hover:bg-red-200 text-red-600 transition duration-150 w-1/4 rounded-r-none">-</button>
+                            <span id="strokes_non_putt_count" class="text-4xl font-extrabold text-gray-900 w-2/4 text-center">0</span>
+                            <button onclick="changeCount('strokes_non_putt', 1)" class="counter-button flex items-center justify-center text-3xl font-bold p-3 bg-golf-green/20 hover:bg-golf-green/30 text-dark-green transition duration-150 w-1/4 rounded-l-none">+</button>
+                        </div>
+                    </label>
+
+                    <!-- 카운터: 퍼팅 횟수 -->
+                    <label class="block">
+                        <span class="block text-base font-medium text-gray-700 mb-1">② 총 퍼팅 횟수</span>
+                        <div class="mt-1 flex items-center justify-between bg-white rounded-xl border-2 border-gray-300 shadow-lg overflow-hidden">
+                            <button onclick="changeCount('putts', -1)" class="counter-button flex items-center justify-center text-3xl font-bold p-3 bg-red-100 hover:bg-red-200 text-red-600 transition duration-150 w-1/4 rounded-r-none">-</button>
+                            <span id="putts_count" class="text-4xl font-extrabold text-gray-900 w-2/4 text-center">0</span>
+                            <button onclick="changeCount('putts', 1)" class="counter-button flex items-center justify-center text-3xl font-bold p-3 bg-golf-green/20 hover:bg-golf-green/30 text-dark-green transition duration-150 w-1/4 rounded-l-none">+</button>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- 벌타 입력 그룹 -->
+                <div class="bg-red-50 p-4 rounded-xl shadow-md border border-red-200">
+                    <h3 class="text-lg font-bold text-red-600 pb-3">2. 총 벌타 횟수</h3>
+                    
+                    <!-- 카운터: 1벌타 상황 -->
+                    <label class="block mb-4">
+                        <span class="block text-base font-medium text-gray-700 mb-1">① 1벌타 (워터 해저드, OB 등)</span>
+                        <div class="mt-1 flex items-center justify-between bg-white rounded-xl border-2 border-gray-300 shadow-lg overflow-hidden">
+                            <button onclick="changeCount('penalty_1x', -1)" class="counter-button flex items-center justify-center text-3xl font-bold p-3 bg-red-100 hover:bg-red-200 text-red-600 transition duration-150 w-1/4 rounded-r-none">-</button>
+                            <span id="penalty_1x_count" class="text-4xl font-extrabold text-gray-900 w-2/4 text-center">0</span>
+                            <button onclick="changeCount('penalty_1x', 1)" class="counter-button flex items-center justify-center text-3xl font-bold p-3 bg-golf-green/20 hover:bg-golf-green/30 text-dark-green transition duration-150 w-1/4 rounded-l-none">+</button>
+                        </div>
+                    </label>
+
+                    <!-- 카운터: 2벌타 상황 -->
+                    <label class="block">
+                        <span class="block text-base font-medium text-gray-700 mb-1">② 2벌타 (드롭 없는 OB 등)</span>
+                        <div class="mt-1 flex items-center justify-between bg-white rounded-xl border-2 border-gray-300 shadow-lg overflow-hidden">
+                            <button onclick="changeCount('penalty_2x', -1)" class="counter-button flex items-center justify-center text-3xl font-bold p-3 bg-red-100 hover:bg-red-200 text-red-600 transition duration-150 w-1/4 rounded-r-none">-</button>
+                            <span id="penalty_2x_count" class="text-4xl font-extrabold text-gray-900 w-2/4 text-center">0</span>
+                            <button onclick="changeCount('penalty_2x', 1)" class="counter-button flex items-center justify-center text-3xl font-bold p-3 bg-golf-green/20 hover:bg-golf-green/30 text-dark-green transition duration-150 w-1/4 rounded-l-none">+</button>
+                        </div>
+                    </label>
+                </div>
+                
+                <!-- Result Display -->
+                <div id="modal_result_message" class="p-4 bg-light-gray rounded-xl">
+                    <!-- 계산 결과가 여기에 표시됩니다. -->
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="p-4 bg-gray-100 flex justify-end space-x-3 border-t">
+                <button onclick="closeScoreModal()" class="px-4 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors">
+                    취소
+                </button>
+                <button id="apply_score_button" onclick="applyScore()" data-score="0" class="px-6 py-2 bg-golf-green text-white font-bold rounded-lg hover:bg-dark-green transition-colors disabled:opacity-50" disabled>
+                    스코어 적용 (0타)
+                </button>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
