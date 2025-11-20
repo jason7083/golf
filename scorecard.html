@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>골프 스코어 심플 개선판 (V12 - 합계 최적화)</title>
+    <title>골프 스코어 심플 개선판 (V12 - HCP 및 초기화 추가)</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -65,12 +65,12 @@
         // --- App State (전역 상태 및 Local Storage 키) ---
         window.scorecard = []; // 18홀 스코어카드 데이터 배열
         window.currentHoleIndex = -1; // 현재 모달에서 편집 중인 홀 (0-17)
+        window.handicap = 0; // 동적으로 관리할 핸디캡 값 (초기값 0)
+        
         const LOCAL_STORAGE_KEY = 'golfScorecardData_v4_18H'; // 18홀 버전 키
-        const MOCK_HANDICAP = 13; // 합계 최적화를 위해 임의로 적용한 핸디캡
-
+        const HCP_STORAGE_KEY = 'golfHandicap_v1'; // 핸디캡 저장 키
+        
         // 18홀 초기 스코어카드 구조 (Par 72 기준의 일반적인 Par 설정)
-        // Front 9 (1-9): 4, 4, 3, 4, 5, 4, 3, 4, 5 (Par 36)
-        // Back 9 (10-18): 4, 4, 3, 4, 5, 4, 3, 4, 5 (Par 36)
         const initialParSequence = [4, 4, 3, 4, 5, 4, 3, 4, 5, 4, 4, 3, 4, 5, 4, 3, 4, 5];
         
         const initialHoleData = Array.from({ length: 18 }, (_, i) => ({
@@ -103,7 +103,7 @@
             } catch (e) {
                 console.error("Local Storage 로드 오류 (18H):", e);
             }
-            window.scorecard = initialHoleData;
+            window.scorecard = initialHoleData.map(h => ({...h})); // 초기화 시 데이터 보호를 위해 복사본 사용
             console.log("새 18홀 스코어카드로 초기화되었습니다.");
         }
 
@@ -117,6 +117,92 @@
             } catch (e) {
                 console.error("Local Storage 저장 오류:", e);
             }
+        }
+        
+        /**
+         * Local Storage에서 핸디캡을 로드하고 UI를 업데이트합니다.
+         */
+        function loadHandicap() {
+            try {
+                const storedHcp = localStorage.getItem(HCP_STORAGE_KEY);
+                // null 또는 undefined 시 0으로 처리
+                window.handicap = storedHcp !== null ? parseInt(storedHcp) : 0; 
+                
+                // UI Input 필드 업데이트
+                const hcpInput = document.getElementById('handicap_input');
+                if (hcpInput) {
+                    hcpInput.value = window.handicap;
+                }
+            } catch (e) {
+                console.error("Handicap 로드 오류:", e);
+                window.handicap = 0;
+            }
+        }
+
+        /**
+         * 핸디캡을 저장하고 스코어카드를 다시 렌더링합니다.
+         */
+        window.saveHandicap = function() {
+            const hcpInput = document.getElementById('handicap_input');
+            const newHcp = parseInt(hcpInput.value) || 0;
+            
+            if (newHcp < 0 || isNaN(newHcp)) { // 음수 및 NaN 입력 방지
+                hcpInput.value = 0;
+                window.handicap = 0;
+            } else {
+                window.handicap = newHcp;
+            }
+            
+            try {
+                localStorage.setItem(HCP_STORAGE_KEY, window.handicap);
+                renderScorecard18Holes(); // Net Score 재계산을 위해 다시 렌더링
+                console.log("Handicap saved:", window.handicap);
+            } catch (e) {
+                console.error("Handicap 저장 오류:", e);
+            }
+        }
+
+        /**
+         * 초기화 확인 모달을 띄웁니다.
+         */
+        window.promptReset = function() {
+            document.getElementById('reset_confirmation_dialog').classList.remove('hidden');
+            document.getElementById('modal_backdrop_reset').classList.remove('hidden');
+        }
+
+        /**
+         * 초기화 확인 모달을 닫습니다.
+         */
+        window.cancelReset = function() {
+            document.getElementById('reset_confirmation_dialog').classList.add('hidden');
+            document.getElementById('modal_backdrop_reset').classList.add('hidden');
+        }
+
+        /**
+         * 스코어카드와 핸디캡을 초기화합니다. (확인 후 실행)
+         */
+        window.confirmReset = function() {
+            // 1. Scorecard Reset
+            window.scorecard = initialHoleData.map(h => ({...h})); 
+            saveScorecardToLocalStorage();
+            
+            // 2. Handicap Reset
+            window.handicap = 0;
+            localStorage.removeItem(HCP_STORAGE_KEY);
+            
+            // 3. UI Update & Close
+            loadHandicap(); // 핸디캡 Input 필드 업데이트 (0으로)
+            renderScorecard18Holes(); 
+            cancelReset(); // 확인 모달 닫기
+            
+            // 성공 메시지 표시 (임시 - 네이티브 alert 금지 규정 준수)
+            console.log("스코어카드 및 핸디캡이 성공적으로 초기화되었습니다.");
+            
+            // 사용자에게 피드백을 주기 위해 임시 UI 메시지 표시
+            document.getElementById('reset_message').classList.remove('hidden');
+            setTimeout(() => {
+                document.getElementById('reset_message').classList.add('hidden');
+            }, 3000);
         }
         
         // --- Core Application Logic (계산/모달/렌더링) ---
@@ -160,17 +246,8 @@
             } else if (scoreDiff === 2) { 
                 result.text = "Double Bogey"; 
                 result.colorClass = "score-dbogey";
-            } else if (scoreDiff === 3) { 
-                result.text = "Triple Bogey"; 
-                result.colorClass = "score-dbogey";
-            } else if (scoreDiff === 4) { 
-                result.text = "Quadruple Bogey"; 
-                result.colorClass = "score-dbogey";
-            } else if (scoreDiff === 5) { 
-                result.text = "Quintuple Bogey"; // 퀸투플 보기 (+5)
-                result.colorClass = "score-dbogey";
-            } else if (scoreDiff >= 6) { 
-                result.text = "Sextuple Bogey+"; // 섹스튜플 보기 (+6 이상)
+            } else if (scoreDiff >= 3) { 
+                result.text = `+${scoreDiff} Bogey`; 
                 result.colorClass = "score-dbogey";
             }
             
@@ -255,11 +332,12 @@
             // 후반 합계 행 삽입 (18홀 완료 후)
             scorecardBody.innerHTML += createSectionTotalRow('후반', backNinePar, backNineScore, false);
 
-            // 최종 총합계 계산 및 렌더링 (순 타수 강조 최적화)
+            // 최종 총합계 계산 및 렌더링
             const totalScoreDiff = totalScore - totalPar;
             
-            // 순 타수 계산 (총 타수 - 핸디캡)
-            const netScore = totalScore > 0 ? totalScore - MOCK_HANDICAP : 0;
+            // 순 타수 계산 (총 타수 - 핸디캡) - window.handicap 사용
+            const currentHandicap = window.handicap; // 동적으로 로드된 핸디캡 사용
+            const netScore = totalScore > 0 ? totalScore - currentHandicap : 0;
             const netDiff = netScore - totalPar; // 순 타수 대비 Par 차이
             
             let diffTextTotal = ''; // 총 타수 대비 Par 차이
@@ -290,10 +368,10 @@
                          </div>
                     </div>
                     
-                    <!-- 2. NET SCORE 강조 (최적화된 핵심 정보) -->
+                    <!-- 2. NET SCORE 강조 (핵심 정보) -->
                     <div class="pt-3 flex justify-between items-center bg-dark-green text-white">
                         <div class="flex flex-col">
-                            <span class="text-xs font-medium text-white/70">적용 핸디캡 (HCP): ${MOCK_HANDICAP}</span>
+                            <span class="text-xs font-medium text-white/70">적용 핸디캡 (HCP): ${currentHandicap}</span>
                             <span class="text-2xl font-black mt-1 text-yellow-300">순 타수 (NET SCORE)</span>
                         </div>
                         <div class="text-right">
@@ -331,6 +409,8 @@
 
         /**
          * Par 값을 선택하고 UI를 업데이트합니다. (모달 내부)
+         * @param {number} selectedPar - 선택된 Par 값
+         * @param {HTMLElement} clickedButton - 클릭된 버튼 요소
          */
         window.selectPar = function(selectedPar, clickedButton) {
             const selectorDiv = document.getElementById('modal_par_selector');
@@ -338,15 +418,16 @@
             
             // 모든 버튼 초기화
             parButtons.forEach(btn => {
-                btn.classList.remove('bg-golf-green', 'text-white', 'border-dark-green', 'shadow-md');
-                btn.classList.add('bg-gray-100', 'text-gray-900', 'border-gray-300', 'hover:bg-gray-200');
+                btn.classList.remove('bg-golf-green', 'text-white', 'border-dark-green', 'shadow-lg');
+                btn.classList.add('bg-gray-100', 'text-gray-900', 'border-gray-300', 'shadow-md');
             });
 
-            // 선택된 버튼 하이라이트
-            if (clickedButton) {
-                clickedButton.classList.remove('bg-gray-100', 'text-gray-900', 'border-gray-300', 'hover:bg-gray-200');
-                clickedButton.classList.add('bg-golf-green', 'text-white', 'border-dark-green', 'shadow-lg');
-            } 
+            // 선택된 Par 값에 해당하는 버튼을 하이라이트
+            const targetButton = clickedButton || document.querySelector(`#modal_par_selector button[data-par="${selectedPar}"]`);
+            if (targetButton) {
+                targetButton.classList.remove('bg-gray-100', 'text-gray-900', 'border-gray-300', 'shadow-md');
+                targetButton.classList.add('bg-golf-green', 'text-white', 'border-dark-green', 'shadow-lg');
+            }
             
             // 선택된 Par 값 업데이트
             selectorDiv.setAttribute('data-selected-par', selectedPar);
@@ -453,11 +534,8 @@
          */
         window.openScoreModal = function(index) {
             window.currentHoleIndex = index;
-            const holeData = window.scorecard[index];
             
-            if (!holeData) return;
-            
-            document.getElementById('modal_hole_title').innerText = `${holeData.hole}번 홀 기록`;
+            document.getElementById('modal_hole_title').innerText = `${window.scorecard[index].hole}번 홀 기록`;
             
             // 데이터 로드
             loadScoreDataToModal(index);
@@ -465,6 +543,9 @@
             // 모달 표시
             document.getElementById('score_modal').classList.remove('hidden');
             document.getElementById('modal_backdrop').classList.remove('hidden');
+            
+            // 스크롤 맨 위로
+            document.getElementById('score_modal').scrollTop = 0;
         }
         
         /**
@@ -474,14 +555,10 @@
             const holeData = window.scorecard[index];
             if (!holeData) return;
             
-            // 1. Par 선택 로드
+            // 1. Par 선택 로드 (Par 버튼을 찾아 선택 상태를 업데이트)
             const targetPar = holeData.par || initialHoleData[index].par;
-            const targetButton = document.querySelector(`#modal_par_selector button[data-par="${targetPar}"]`);
-            
-            // Par 버튼을 찾아 선택 상태를 업데이트합니다.
-            // targetButton이 null일 수 있으므로, selectPar 내부에서 처리하도록 합니다.
-            window.selectPar(targetPar, targetButton);
-
+            // selectPar 함수를 호출하여 UI 상태를 업데이트합니다. (clickedButton이 null이면 내부 로직에서 처리)
+            window.selectPar(targetPar, null);
 
             // 2. 카운터 값 로드
             document.getElementById('strokes_non_putt_count').innerText = holeData.strokesNonPutt || 0;
@@ -543,15 +620,21 @@
             }
         }
 
-        // 초기화
+        // 초기화 함수 실행: 데이터와 핸디캡을 모두 로드 후 렌더링
         window.onload = function() {
             loadScorecardFromLocalStorage(); // 데이터 로드
+            loadHandicap(); // 핸디캡 로드 및 UI 동기화
             renderScorecard18Holes(); // UI 렌더링 (18홀)
         };
 
     </script>
 </head>
 <body class="bg-light-gray min-h-screen p-4 flex flex-col items-center">
+
+    <!-- 초기화 성공 메시지 (커스텀 Alert 대체) -->
+    <div id="reset_message" class="hidden fixed top-4 z-50 p-4 bg-green-500 text-white rounded-lg shadow-xl font-bold transition-all duration-300 transform scale-100 opacity-95">
+        ✅ 스코어카드와 핸디캡이 초기화되었습니다.
+    </div>
 
     <div class="w-full max-w-lg bg-white rounded-xl shadow-2xl overflow-hidden ring-4 ring-golf-green/20 mb-6">
         
@@ -566,6 +649,14 @@
                 골프 스코어 기록표 (18홀) V12
             </h1>
             <p class="text-xs text-center opacity-80 mt-1">스코어를 터치하여 기록/수정하세요.</p>
+            
+            <!-- Reset Button (Critical Issue Fix: confirm() 대신 custom modal 호출) -->
+            <div class="mt-3 flex justify-center">
+                <button onclick="promptReset()" class="text-xs font-semibold py-1 px-3 bg-red-600 hover:bg-red-700 rounded-full transition-colors flex items-center shadow-md">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 mr-1"><path d="M21 12a9 9 0 0 0-9-9c-2.54 0-4.92 1.01-6.71 2.89L3 7"/><path d="M3 3v4h4"/><path d="M3 12a9 9 0 0 0 9 9c2.54 0 4.92-1.01 6.71-2.89L21 17"/><path d="M21 21v-4h-4"/></svg>
+                    스코어/HCP 초기화
+                </button>
+            </div>
         </div>
 
         <!-- Single Unified Scorecard Table -->
@@ -585,6 +676,22 @@
                 </tbody>
             </table>
         </div>
+        
+        <!-- Handicap Input Section -->
+        <div class="p-4 bg-white border-t border-gray-200">
+            <label for="handicap_input" class="block text-sm font-semibold text-gray-700 mb-2">
+                현재 핸디캡 (HCP) 입력
+            </label>
+            <input type="number" 
+                   id="handicap_input" 
+                   value="0" 
+                   min="0" 
+                   onchange="saveHandicap()" 
+                   onblur="saveHandicap()" 
+                   class="w-full p-3 border-2 border-golf-green rounded-lg text-lg font-bold text-center focus:ring-2 focus:ring-dark-green transition duration-150">
+            <p class="text-xs text-gray-500 mt-1">핸디캡을 입력하면 순 타수(NET SCORE)가 자동 계산됩니다.</p>
+        </div>
+
 
         <!-- Grand Totals Display - 순 타수 강조 최적화 적용 -->
         <div id="scorecard_totals">
@@ -594,25 +701,25 @@
 
 
     <!-- ========================================================================= -->
-    <!-- Score Input Modal -->
+    <!-- Score Input Modal (Hole Edit) -->
     <!-- ========================================================================= -->
 
-    <!-- Backdrop -->
+    <!-- Backdrop for Score Modal -->
     <div id="modal_backdrop" class="hidden fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity duration-300" onclick="closeScoreModal()"></div>
 
-    <!-- Modal Content -->
-    <div id="score_modal" class="hidden fixed inset-0 flex items-center justify-center p-4 z-50">
-        <div class="w-full max-w-md bg-white rounded-xl shadow-2xl overflow-hidden transform transition-all duration-300">
+    <!-- Modal Content - 모바일 스크롤 최적화를 위해 flex/center 대신 overflow-y-auto 사용 -->
+    <div id="score_modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+        <div class="w-full max-w-md bg-white rounded-xl shadow-2xl transform transition-all duration-300 mx-auto my-8">
             
             <!-- Modal Header -->
-            <div class="bg-dark-green p-4 flex justify-between items-center text-white">
+            <div class="bg-dark-green sticky top-0 z-10 p-4 flex justify-between items-center text-white">
                 <h2 id="modal_hole_title" class="text-xl font-bold">N번 홀 기록</h2>
                 <button onclick="closeScoreModal()" class="text-white hover:text-gray-200 p-1 rounded-full transition-colors" aria-label="모달 닫기">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
 
-            <div class="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+            <div class="p-6 space-y-6">
 
                 <!-- Par Input: Button Selector -->
                 <div class="border-b pb-4 mb-4">
@@ -621,10 +728,10 @@
                     </label>
                     <!-- grid-cols-4로 변경 및 Par 6 버튼 유지 -->
                     <div id="modal_par_selector" data-selected-par="4" class="grid grid-cols-4 gap-2 mt-1">
-                        <button onclick="selectPar(3, this)" data-par="3" class="par-button py-3 rounded-xl text-xl font-bold border-2 transition duration-150 bg-gray-100 hover:bg-gray-200 shadow-md">Par 3</button>
-                        <button onclick="selectPar(4, this)" data-par="4" class="par-button py-3 rounded-xl text-xl font-bold border-2 transition duration-150 bg-gray-100 hover:bg-gray-200 shadow-md">Par 4</button>
-                        <button onclick="selectPar(5, this)" data-par="5" class="par-button py-3 rounded-xl text-xl font-bold border-2 transition duration-150 bg-gray-100 hover:bg-gray-200 shadow-md">Par 5</button>
-                        <button onclick="selectPar(6, this)" data-par="6" class="par-button py-3 rounded-xl text-xl font-bold border-2 transition duration-150 bg-gray-100 hover:bg-gray-200 shadow-md">Par 6</button>
+                        <button onclick="selectPar(3, this)" data-par="3" class="par-button py-3 rounded-xl text-xl font-bold border-2 transition duration-150 shadow-md">Par 3</button>
+                        <button onclick="selectPar(4, this)" data-par="4" class="par-button py-3 rounded-xl text-xl font-bold border-2 transition duration-150 shadow-md">Par 4</button>
+                        <button onclick="selectPar(5, this)" data-par="5" class="par-button py-3 rounded-xl text-xl font-bold border-2 transition duration-150 shadow-md">Par 5</button>
+                        <button onclick="selectPar(6, this)" data-par="6" class="par-button py-3 rounded-xl text-xl font-bold border-2 transition duration-150 shadow-md">Par 6</button>
                     </div>
                      <p class="text-xs text-gray-500 mt-2 text-center">선택된 Par 값으로 스코어 결과가 계산됩니다.</p>
                 </div>
@@ -686,7 +793,7 @@
             </div>
 
             <!-- Modal Footer -->
-            <div class="p-4 bg-gray-100 flex justify-end space-x-3 border-t">
+            <div class="sticky bottom-0 bg-gray-100 p-4 flex justify-end space-x-3 border-t">
                 <button onclick="closeScoreModal()" class="px-4 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors">
                     취소
                 </button>
@@ -697,5 +804,34 @@
         </div>
     </div>
 
+    <!-- ========================================================================= -->
+    <!-- Reset Confirmation Modal (Custom UI for confirm() replacement) -->
+    <!-- ========================================================================= -->
+
+    <!-- Backdrop for Reset Modal -->
+    <div id="modal_backdrop_reset" class="hidden fixed inset-0 bg-black bg-opacity-70 z-40 transition-opacity duration-300" onclick="cancelReset()"></div>
+
+    <!-- Confirmation Dialog -->
+    <div id="reset_confirmation_dialog" class="hidden fixed inset-0 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm transform transition-all duration-300">
+            <h3 class="text-xl font-bold text-red-600 mb-3 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 mr-2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                데이터 초기화 경고
+            </h3>
+            <p class="text-gray-700 mb-6">
+                스코어카드 기록과 저장된 핸디캡(HCP) 값이 **모두 영구적으로 삭제**됩니다. 정말로 초기화하시겠습니까?
+            </p>
+            <div class="flex justify-end space-x-3">
+                <button onclick="cancelReset()" class="px-4 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors">
+                    취소
+                </button>
+                <button onclick="confirmReset()" class="px-6 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors">
+                    네, 초기화합니다
+                </button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
+
